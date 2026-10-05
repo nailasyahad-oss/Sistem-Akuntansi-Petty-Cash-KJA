@@ -698,6 +698,27 @@ html:has(.workspace:not([hidden]))::-webkit-scrollbar-thumb { background: linear
   .workspace .toolbar label { color: #fff3e8; }
 }
 
+.workspace .balance-alerts { display: grid; gap: 9px; margin: 0 0 18px; }
+.workspace .balance-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 14px;
+  padding: 12px 15px;
+  color: #684335;
+  background: linear-gradient(110deg, rgba(255,239,215,.96), rgba(250,225,224,.94));
+  border: 1px solid rgba(255,255,255,.92);
+  border-left: 4px solid #bb765f;
+  border-radius: 12px;
+  box-shadow: 0 7px 18px rgba(74,30,27,.07);
+  font-size: 11px;
+}
+.workspace .balance-alert strong { color: #59171b; font-size: 12px; }
+.workspace .balance-alert span:last-child { color: #8a493c; font-weight: 700; }
+@media (max-width: 680px) {
+  .workspace .balance-alert { align-items: flex-start; flex-direction: column; gap: 5px; }
+}
+
 /* Soft glass login and light dashboard theme. */
 .login-screen {
   display: block;

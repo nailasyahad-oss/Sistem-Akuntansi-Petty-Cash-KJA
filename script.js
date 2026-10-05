@@ -187,6 +187,13 @@ function dashboardMarkup() {
   const sums = totals();
   const pendingCount = state.requests.filter((item) => item.status === 'pending').length;
   const balance = state.accounts.reduce((sum, account) => sum + accountBalance(account.id), 0);
+  const lowBalanceAccounts = state.accounts.filter((account) => {
+    const minimum = Number(account.min_balance || 0);
+    return minimum > 0 && accountBalance(account.id) < minimum;
+  });
+  const balanceWarnings = lowBalanceAccounts.length
+    ? `<section class="balance-alerts" aria-label="Peringatan batas saldo">${lowBalanceAccounts.map((account) => `<div class="balance-alert"><strong>${escapeHtml(account.name)}</strong><span>Saldo ${money(accountBalance(account.id))} · Batas minimum ${money(account.min_balance)}</span><span>Segera ajukan pengisian</span></div>`).join('')}</section>`
+    : '';
   const metrics = [
     ['Saldo kas kecil', money(balance), `${state.accounts.length} akun terdaftar`],
     ['Pengajuan menunggu', pendingCount, isAdmin() ? 'Menunggu keputusan manager' : 'Perlu ditinjau'],
@@ -196,6 +203,7 @@ function dashboardMarkup() {
   const recentRequests = state.requests.slice(0, 5);
   const recentTransactions = state.transactions.filter((item) => item.transaction_type === 'OUT').slice(0, 5);
   return `<div class="welcome-line"><div><h2>${isAdmin() ? 'Ringkasan operasional' : 'Pemantauan kas kecil'}</h2><p>Halo, ${escapeHtml(state.profile.full_name)}. Berikut kondisi kas terkini.</p></div>${isAdmin() ? '<button class="button button-primary" data-action="new" data-entity="request">＋ Buat pengajuan</button>' : ''}</div>
+    ${balanceWarnings}
     <div class="metric-grid">${metrics.map(([label, value, note]) => `<article class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-note">${note}</div></article>`).join('')}</div>
     <div class="dashboard-lower"><section class="panel"><div class="panel-heading"><div><h3>Pengajuan terbaru</h3><p>Pengajuan petty cash terkini</p></div><button class="small-action" data-view="requests">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>Keperluan</th><th>Nominal</th><th>Status</th></tr></thead><tbody>${requestRows(recentRequests, true)}</tbody></table></div></section>
     <section class="panel"><div class="panel-heading"><div><h3>Transaksi terakhir</h3><p>Pergerakan kas terbaru</p></div><button class="small-action" data-view="transactions">Riwayat →</button></div><div class="table-wrap"><table><thead><tr><th>Transaksi</th><th>Jenis</th><th>Nominal</th></tr></thead><tbody>${transactionRows(recentTransactions, true)}</tbody></table></div></section></div>`;
@@ -267,7 +275,7 @@ function transactionForm(item = {}) {
 }
 
 function accountForm(item = {}) {
-  return `${field('Kode akun', 'account_code', item.account_code, 'text', true, 'maxlength="24" placeholder="Contoh: PK-001"')}<label for="field-name">Nama akun</label><input id="field-name" name="name" type="text" value="${escapeHtml(item.name || '')}" maxlength="80" required placeholder="Contoh: Kas kecil kantor">${item.id ? `<p class="cell-sub">Saldo awal: ${money(item.initial_balance)} (tetap)</p><label class="check-field"><input name="is_active" type="checkbox" ${item.is_active ? 'checked' : ''}> Akun aktif</label>` : '<p class="cell-sub">Saldo awal akun baru Rp0. Pengisian dana diajukan melalui menu pengajuan.</p>'}`;
+  return `${field('Kode akun', 'account_code', item.account_code, 'text', true, 'maxlength="24" placeholder="Contoh: PK-001"')}<label for="field-name">Nama akun</label><input id="field-name" name="name" type="text" value="${escapeHtml(item.name || '')}" maxlength="80" required placeholder="Contoh: Kas kecil kantor">${field('Batas saldo minimum (Rp)', 'min_balance', item.min_balance ?? 0, 'number', true, 'min="0" step="1"')}${item.id ? `<p class="cell-sub">Saldo awal: ${money(item.initial_balance)} (tetap)</p><label class="check-field"><input name="is_active" type="checkbox" ${item.is_active ? 'checked' : ''}> Akun aktif</label>` : '<p class="cell-sub">Saldo awal akun baru Rp0. Pengisian dana diajukan melalui menu pengajuan.</p>'}`;
 }
 
 function openEditor(entity, item = null) {
@@ -297,7 +305,7 @@ async function saveRecord(event) {
     if (!id) Object.assign(payload, { requester_id: state.profile.id, status: 'pending' });
   } else if (entity === 'account') {
     table = 'petty_cash_accounts';
-    payload = { account_code: values.account_code.trim().toUpperCase(), name: values.name.trim() };
+    payload = { account_code: values.account_code.trim().toUpperCase(), name: values.name.trim(), min_balance: Number(values.min_balance) };
     if (id) payload.is_active = formData.has('is_active');
     else Object.assign(payload, { initial_balance: 0, created_by: state.profile.id });
   } else {
