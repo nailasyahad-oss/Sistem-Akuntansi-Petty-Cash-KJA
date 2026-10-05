@@ -9,21 +9,19 @@ Aplikasi web untuk mengelola akun kas kecil, pengajuan pengisian dana, persetuju
 - Frontend: HTML, CSS, dan JavaScript.
 - Database dan autentikasi: Supabase PostgreSQL dan Supabase Auth.
 - Akses data: Supabase JavaScript client v2 dari browser, dengan kebijakan RLS.
-- Server web: `backend/app.js` memakai modul bawaan Node.js untuk menyajikan file frontend.
+- Server web: `app.js` memakai modul bawaan Node.js untuk menyajikan file aplikasi dari root project.
 
 ## Struktur Folder
 
 ```text
 project/
-├── frontend/
-│   ├── index.html
-│   ├── style.css
-│   └── script.js
-├── backend/
-│   ├── app.js
-│   └── sql/
-│       └── schema.sql
-└── README.md
+├── index.html
+├── script.js
+├── style.css
+├── schema.sql
+├── app.js
+├── README.md
+└── Sistem Petty Cash KJA.pdf
 ```
 
 ## Role Pengguna

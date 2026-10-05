@@ -2,7 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const frontendDirectory = path.resolve(__dirname, '..', 'frontend');
+const frontendDirectory = path.resolve(__dirname);
 const port = Number(process.env.PORT || 4173);
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
