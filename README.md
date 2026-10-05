@@ -1,4 +1,4 @@
-# Sistem Akuntansi Petty Cash KJA Naila
+# Sistem Akuntansi Petty Cash KJA
 
 ## Deskripsi
 
