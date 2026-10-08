@@ -15,7 +15,7 @@
 <body>
   <main id="app" aria-live="polite">
     <section id="login-screen" class="login-screen" hidden>
-      <div class="login-aside">
+      <div class="login-aside" aria-hidden="true">
         <div class="brand-lockup"><span class="brand-mark">K</span><span>KJA <small>KEUANGAN OPERASIONAL</small></span></div>
         <div class="login-message">
           <p class="eyebrow">SISTEM AKUNTANSI</p>
@@ -26,6 +26,7 @@
       </div>
       <div class="login-main">
         <form id="login-form" class="login-form">
+          <div class="login-avatar" aria-hidden="true"></div>
           <p class="eyebrow">SELAMAT DATANG</p>
           <h2>Masuk ke akun Anda</h2>
           <p class="form-intro">Gunakan email dan kata sandi terdaftar.</p>
@@ -33,7 +34,7 @@
           <input id="login-email" name="email" type="email" autocomplete="username" placeholder="nama@kantor.co.id" required>
           <label for="login-password">Kata sandi</label>
           <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required>
-          <button class="button button-primary login-submit" type="submit"><span>Masuk</span><span aria-hidden="true">→</span></button>
+          <button class="button button-primary login-submit" type="submit"><span>MASUK</span><span aria-hidden="true">→</span></button>
           <p id="login-error" class="inline-error" role="alert"></p>
           <p class="login-note">Akun dibuat oleh administrator sistem.</p>
         </form>
