@@ -9,6 +9,7 @@ const state = {
   profile: null,
   view: 'dashboard',
   accounts: [],
+  categories: [],
   requests: [],
   transactions: [],
   users: [],
@@ -25,6 +26,7 @@ const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => (
 const isAdmin = () => state.profile?.role === 'ADMIN';
 const userName = (id) => state.users.find((user) => user.id === id)?.full_name || 'Pengguna';
 const accountName = (id) => state.accounts.find((account) => account.id === id)?.name || 'Akun dihapus';
+const categoryName = (id) => state.categories.find((category) => category.id === id)?.name || 'Tanpa kategori';
 const roleLabel = () => isAdmin() ? 'ADMIN' : 'MANAGER';
 
 const navItems = [
@@ -43,18 +45,49 @@ function showLoading(show, compact = false) {
 
 function notify(message, type = 'success') {
   const toast = $('#toast');
-  toast.textContent = message;
+  const toastIcon = $('.toast-icon', toast);
+  const toastMessage = $('.toast-message', toast);
+  toastMessage.textContent = message;
   toast.classList.toggle('error', type === 'error');
+  toast.classList.toggle('warning', type === 'warning');
+  toastIcon.textContent = type === 'warning' ? '!' : type === 'error' ? '!' : '✓';
   toast.classList.add('show');
   window.clearTimeout(notify.timer);
-  notify.timer = window.setTimeout(() => toast.classList.remove('show'), 3400);
+  notify.timer = window.setTimeout(() => toast.classList.remove('show'), 5600);
+}
+
+function showFieldError(fieldName, message) {
+  const field = $(`#field-${fieldName}`);
+  const error = $(`#field-${fieldName}-error`);
+  if (!field || !error) return;
+  field.classList.add('field-invalid');
+  error.textContent = message;
+  field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  field.focus({ preventScroll: true });
+}
+
+function clearFieldError(fieldName) {
+  const field = $(`#field-${fieldName}`);
+  const error = $(`#field-${fieldName}-error`);
+  if (!field || !error) return;
+  field.classList.remove('field-invalid');
+  error.textContent = '';
 }
 
 function errorMessage(error) {
   const message = error?.message || 'Terjadi kesalahan. Silakan coba kembali.';
+  if (/saldo akun tidak mencukupi/i.test(message)) return message;
   if (/row-level security|permission denied/i.test(message)) return 'Akses ditolak. Periksa role pengguna dan kebijakan RLS.';
   if (/fetch|network/i.test(message)) return 'Tidak dapat terhubung ke Supabase. Periksa koneksi dan konfigurasi.';
   return message;
+}
+
+function balanceErrorMessage(message) {
+  const match = message.match(/Saldo akun tidak mencukupi\. Saldo saat ini Rp\s*([\d,]+(?:\.\d+)?)/i);
+  if (!match) return message;
+  const amount = Number(match[1].replace(/,/g, ''));
+  const formattedBalance = money(amount).replace(/\u00a0/g, ' ');
+  return `Saldo akun tidak mencukupi. Saldo saat ini ${formattedBalance}.`;
 }
 
 function renderNavigation() {
@@ -93,8 +126,9 @@ async function loadProfile(session) {
 
 async function refreshData() {
   showLoading(true, true);
-  const [accounts, requests, transactions, users] = await Promise.all([
+  const [accounts, categories, requests, transactions, users] = await Promise.all([
     supabaseClient.from('petty_cash_accounts').select('*').order('name'),
+    supabaseClient.from('expense_categories').select('*').order('name'),
     supabaseClient.from('petty_cash_requests').select('*').order('created_at', { ascending: false }),
     supabaseClient.from('petty_cash_transactions').select('*').order('transaction_date', { ascending: false }),
     supabaseClient.from('users').select('id, full_name, role')
@@ -106,6 +140,7 @@ async function refreshData() {
     return;
   }
   state.accounts = accounts.data || [];
+  state.categories = categories.error ? [] : categories.data || [];
   state.requests = requests.data || [];
   state.transactions = transactions.data || [];
   state.users = users.data || [];
@@ -179,7 +214,7 @@ function transactionRows(list, compact = false) {
   if (!list.length) return tableEmpty(compact ? 3 : 5, 'Belum ada transaksi', 'Transaksi kas kecil akan tampil di sini.');
   return list.map((item) => {
     const actions = isAdmin() ? `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="delete" data-entity="transaction" data-id="${item.id}">Hapus</button>` : '—';
-    return `<tr><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge badge-pending">Kas keluar</span></td><td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
+    return `<tr><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge badge-pending">Kas keluar</span></td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
   }).join('');
 }
 
@@ -231,8 +266,9 @@ function filteredTransactions() {
 
 function transactionsMarkup() {
   const addButton = isAdmin() ? '<button class="button button-primary" data-action="new" data-entity="transaction">＋ Catat transaksi</button>' : '';
-  return `<div class="toolbar"><h2>Riwayat transaksi <span class="cell-sub">${filteredTransactions().length} data</span></h2><div class="toolbar-controls"><input class="search-field" data-search placeholder="Cari pengeluaran atau akun..." value="${escapeHtml(state.search)}" aria-label="Cari transaksi">${addButton}</div></div>
-    <section class="panel"><div class="table-wrap"><table><thead><tr><th>Uraian</th><th>Akun kas</th><th>Jenis</th><th>Nominal</th><th>Tindakan</th></tr></thead><tbody>${transactionRows(filteredTransactions())}</tbody></table></div></section>`;
+  const categoryManager = isAdmin() ? `<section class="panel category-panel"><div class="panel-heading"><div><h3>Kategori pengeluaran</h3><p>${state.categories.filter((category) => category.is_active).length} kategori aktif</p></div><button class="small-action" data-action="add-category">+ Tambah kategori</button></div><div class="category-list">${state.categories.map((category) => `<span class="category-pill ${category.is_active ? '' : 'inactive'}">${escapeHtml(category.name)}<button type="button" data-action="toggle-category" data-id="${category.id}" data-active="${category.is_active}">${category.is_active ? 'Nonaktifkan' : 'Aktifkan'}</button></span>`).join('')}</div></section>` : '';
+  return `<div class="toolbar"><h2>Riwayat transaksi <span class="cell-sub">${filteredTransactions().length} data</span></h2><div class="toolbar-controls"><input class="search-field" data-search placeholder="Cari pengeluaran atau akun..." value="${escapeHtml(state.search)}" aria-label="Cari transaksi">${addButton}</div></div>${categoryManager}
+    <section class="panel"><div class="table-wrap"><table><thead><tr><th>Uraian</th><th>Akun kas</th><th>Jenis</th><th>Kategori</th><th>Nominal</th><th>Tindakan</th></tr></thead><tbody>${transactionRows(filteredTransactions())}</tbody></table></div></section>`;
 }
 
 function accountsMarkup() {
@@ -271,7 +307,12 @@ function requestForm(item = {}) {
 function transactionForm(item = {}) {
   const activeAccounts = state.accounts.filter((account) => account.is_active);
   const accountOptions = activeAccounts.map((account) => `<option value="${account.id}" ${item.account_id === account.id ? 'selected' : ''}>${escapeHtml(account.name)} (${money(accountBalance(account.id))})</option>`).join('');
-  return `<label for="field-account_id">Akun kas kecil</label><select id="field-account_id" name="account_id" required><option value="">Pilih akun</option>${accountOptions}</select>${field('Tanggal transaksi', 'transaction_date', item.transaction_date || new Date().toISOString().slice(0, 10), 'date')}<label for="field-description">Uraian pengeluaran</label><textarea id="field-description" name="description" maxlength="240" required placeholder="Contoh: pembelian ATK">${escapeHtml(item.description || '')}</textarea><label for="field-amount">Nominal pengeluaran (Rp)</label><input id="field-amount" name="amount" type="number" min="1" step="1" value="${escapeHtml(item.amount ?? '')}" required><p class="cell-sub">Pengisian saldo dilakukan melalui pengajuan dan persetujuan manager.</p>`;
+  const activeCategories = state.categories.filter((category) => category.is_active);
+  const categoryOptions = activeCategories.map((category) => `<option value="${category.id}" ${item.category_id === category.id ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('');
+  const categoryField = state.categories.length
+    ? `<label for="field-category_id">Kategori pengeluaran</label><select id="field-category_id" name="category_id" ${!item.id ? 'required' : ''}><option value="">${item.id ? 'Tanpa kategori' : 'Pilih kategori'}</option>${categoryOptions}</select>`
+    : '<p class="cell-sub">Kategori belum tersedia. Jalankan blok kategori pada schema SQL terlebih dahulu.</p>';
+  return `<label for="field-account_id">Akun kas kecil</label><select id="field-account_id" name="account_id" required><option value="">Pilih akun</option>${accountOptions}</select>${field('Tanggal transaksi', 'transaction_date', item.transaction_date || new Date().toISOString().slice(0, 10), 'date')}${categoryField}<label for="field-description">Uraian pengeluaran</label><textarea id="field-description" name="description" maxlength="240" required placeholder="Contoh: pembelian ATK">${escapeHtml(item.description || '')}</textarea><label for="field-amount">Nominal pengeluaran (Rp)</label><input id="field-amount" name="amount" type="number" min="1" step="1" value="${escapeHtml(item.amount ?? '')}" required><p id="field-amount-error" class="inline-field-error" aria-live="polite"></p><p class="cell-sub">Pengisian saldo dilakukan melalui pengajuan dan persetujuan manager.</p>`;
 }
 
 function accountForm(item = {}) {
@@ -312,6 +353,7 @@ async function saveRecord(event) {
     table = 'petty_cash_transactions';
     payload = {
       account_id: values.account_id,
+      category_id: values.category_id || null,
       request_id: null,
       transaction_type: 'OUT',
       transaction_date: values.transaction_date,
@@ -329,7 +371,18 @@ async function saveRecord(event) {
     : await supabaseClient.from(table).insert(payload);
   button.disabled = false;
   button.textContent = 'Simpan';
-  if (result.error) return notify(errorMessage(result.error), 'error');
+  if (result.error) {
+    const displayedError = errorMessage(result.error);
+    const isInsufficientBalance = entity === 'transaction' && /saldo akun tidak mencukupi/i.test(displayedError);
+    if (isInsufficientBalance) {
+      $('#record-dialog').close();
+      window.setTimeout(() => notify(balanceErrorMessage(displayedError), 'error'), 220);
+      return;
+    }
+    if (entity === 'transaction') showFieldError('amount', displayedError);
+    notify(displayedError, 'error');
+    return;
+  }
   $('#record-dialog').close();
   state.editing = null;
   notify(id ? 'Perubahan berhasil disimpan.' : 'Data berhasil ditambahkan.');
@@ -413,7 +466,39 @@ $('#content').addEventListener('click', async (event) => {
   if (action === 'delete') return deleteRecord(entity, id);
   if (action === 'approve') return reviewRequest(id, 'approved');
   if (action === 'reject') return reviewRequest(id, 'rejected');
+  if (action === 'add-category') return addCategory();
+  if (action === 'toggle-category') return toggleCategory(id, button.dataset.active === 'true');
 });
+
+async function addCategory() {
+  if (!isAdmin()) return;
+  const name = window.prompt('Nama kategori pengeluaran:');
+  if (!name?.trim()) return;
+  try {
+    const { error } = await supabaseClient.from('expense_categories').insert({
+      name: name.trim(),
+      coa_code: null,
+      is_active: true
+    });
+    if (error) throw error;
+    notify('Kategori pengeluaran berhasil ditambahkan.');
+    await refreshData();
+  } catch (categoryError) {
+    notify(errorMessage(categoryError), 'error');
+  }
+}
+
+async function toggleCategory(id, wasActive) {
+  if (!isAdmin()) return;
+  try {
+    const { error } = await supabaseClient.from('expense_categories').update({ is_active: !wasActive }).eq('id', id);
+    if (error) throw error;
+    notify(wasActive ? 'Kategori dinonaktifkan.' : 'Kategori diaktifkan.');
+    await refreshData();
+  } catch (categoryError) {
+    notify(errorMessage(categoryError), 'error');
+  }
+}
 
 $('#content').addEventListener('input', (event) => {
   if (event.target.matches('[data-search]')) {
@@ -423,6 +508,7 @@ $('#content').addEventListener('input', (event) => {
     const search = $('[data-search]');
     search.focus();
     search.setSelectionRange(position, position);
+  if (event.target.matches('#field-amount')) clearFieldError('amount');
   }
   if (event.target.matches('#report-month')) {
     state.reportMonth = event.target.value;
@@ -440,6 +526,9 @@ $('#content').addEventListener('change', (event) => {
 $('#record-form').addEventListener('submit', saveRecord);
 $('#record-dialog').addEventListener('click', (event) => {
   if (event.target.matches('[data-close-dialog]')) $('#record-dialog').close();
+});
+$('#toast').addEventListener('click', (event) => {
+  if (event.target.closest('.toast-close')) $('#toast').classList.remove('show');
 });
 $('#record-dialog').addEventListener('close', () => { state.editing = null; });
 

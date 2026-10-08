@@ -20,6 +20,54 @@ create table if not exists public.petty_cash_accounts (
   updated_at timestamptz not null default now()
 );
 
+-- [FITUR BARU] Tahap 1: batas saldo minimum akun kas.
+-- Addition is safe for populated databases: existing rows receive DEFAULT 0,
+-- and no account, request, or transaction data is changed.
+alter table public.petty_cash_accounts
+  add column if not exists min_balance numeric(14, 2)
+    not null default 0
+    check (min_balance >= 0);
+
+-- Verify before applying this block in the Supabase SQL Editor, then run the
+-- block again after the schema is applied to confirm idempotency.
+-- Query sebelum: bandingkan hasil saldo_kas untuk setiap akun.
+select
+  a.id as account_id,
+  a.name as nama_akun,
+  coalesce(a.initial_balance, 0)
+    + coalesce((
+      select sum(r.requested_amount)
+      from public.petty_cash_requests r
+      where r.account_id = a.id and r.status = 'approved'
+    ), 0)
+    - coalesce((
+      select sum(t.amount)
+      from public.petty_cash_transactions t
+      where t.account_id = a.id and t.transaction_type = 'OUT'
+    ), 0) as saldo_kas
+from public.petty_cash_accounts a
+order by a.name;
+
+-- Query sesudah: hasil account_id, nama_akun, dan saldo_kas harus identik
+-- dengan hasil sebelum perubahan (kolom min_balance tidak mengubah saldo).
+-- Lakukan query ini setelah mengeksekusi bagian "Tahap 1" di schema.sql.
+select
+  a.id as account_id,
+  a.name as nama_akun,
+  coalesce(a.initial_balance, 0)
+    + coalesce((
+      select sum(r.requested_amount)
+      from public.petty_cash_requests r
+      where r.account_id = a.id and r.status = 'approved'
+    ), 0)
+    - coalesce((
+      select sum(t.amount)
+      from public.petty_cash_transactions t
+      where t.account_id = a.id and t.transaction_type = 'OUT'
+    ), 0) as saldo_kas
+from public.petty_cash_accounts a
+order by a.name;
+
 create table if not exists public.petty_cash_requests (
   id uuid primary key default gen_random_uuid(),
   requester_id uuid not null references public.users (id),
@@ -52,6 +100,49 @@ create table if not exists public.petty_cash_transactions (
   updated_at timestamptz not null default now(),
   constraint petty_cash_transactions_out_only check (transaction_type = 'OUT')
 );
+
+-- [FITUR BARU] Tahap 2: kategori pengeluaran.
+-- Existing transactions remain category_id NULL and display "Tanpa kategori".
+create table if not exists public.expense_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  coa_code text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.petty_cash_transactions
+  add column if not exists category_id uuid
+    references public.expense_categories(id);
+
+insert into public.expense_categories (name, coa_code, is_active)
+values
+  ('ATK', 'ATK', true),
+  ('Transportasi', 'TRANSPORTASI', true),
+  ('Konsumsi', 'KONSUMSI', true),
+  ('Listrik & Air', 'LISTRIK_AIR', true),
+  ('Kebersihan', 'KEBERSIHAN', true),
+  ('Lain-lain', 'LAIN', true)
+on conflict (name) do nothing;
+
+alter table public.expense_categories enable row level security;
+
+drop policy if exists expense_categories_read_authenticated on public.expense_categories;
+drop policy if exists expense_categories_insert_admin on public.expense_categories;
+drop policy if exists expense_categories_update_admin on public.expense_categories;
+
+create policy expense_categories_read_authenticated
+  on public.expense_categories for select to authenticated
+  using (public.current_app_role() in ('ADMIN', 'MANAGER'));
+create policy expense_categories_insert_admin
+  on public.expense_categories for insert to authenticated
+  with check (public.current_app_role() = 'ADMIN');
+create policy expense_categories_update_admin
+  on public.expense_categories for update to authenticated
+  using (public.current_app_role() = 'ADMIN')
+  with check (public.current_app_role() = 'ADMIN');
+
+grant select, insert, update on public.expense_categories to authenticated;
 
 -- Existing databases receive a nullable column so existing requests are kept.
 -- RLS requires an account on every new request; legacy requests can be edited
@@ -216,6 +307,67 @@ drop trigger if exists petty_cash_transactions_validate_request on public.petty_
 create trigger petty_cash_transactions_validate_request
 before insert or update on public.petty_cash_transactions
 for each row execute function public.validate_petty_cash_transaction();
+
+-- Stage 3: prevent an OUT transaction from driving cash below zero.
+-- The account row is locked before the balance is calculated, preventing
+-- concurrent transactions from both passing the same balance check.
+create or replace function public.validate_petty_cash_balance()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  target_account_id uuid;
+  current_balance numeric(14, 2);
+begin
+  select id
+  into target_account_id
+  from public.petty_cash_accounts
+  where id = new.account_id
+  for update;
+
+  if tg_op = 'UPDATE' and old.account_id is distinct from new.account_id then
+    select id
+    from public.petty_cash_accounts
+    where id = old.account_id
+    for update;
+  end if;
+
+  select
+    coalesce(a.initial_balance, 0)
+      + coalesce((
+        select sum(r.requested_amount)
+        from public.petty_cash_requests r
+        where r.account_id = a.id
+          and r.status = 'approved'
+      ), 0)
+      - coalesce((
+        select sum(t.amount)
+        from public.petty_cash_transactions t
+        where t.account_id = a.id
+          and t.id is distinct from new.id
+          and t.transaction_type = 'OUT'
+      ), 0)
+  into current_balance
+  from public.petty_cash_accounts a
+  where a.id = target_account_id;
+
+  if current_balance - new.amount < 0 then
+    raise exception
+      'Saldo akun tidak mencukupi. Saldo saat ini Rp %',
+      current_balance
+      using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_transactions_validate_balance on public.petty_cash_transactions;
+create trigger petty_cash_transactions_validate_balance
+before insert or update on public.petty_cash_transactions
+for each row execute function public.validate_petty_cash_balance();
 
 alter table public.users enable row level security;
 alter table public.petty_cash_accounts enable row level security;

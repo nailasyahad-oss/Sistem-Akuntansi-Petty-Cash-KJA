@@ -67,7 +67,11 @@
         <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Batal</button><button class="button button-primary" id="save-record" type="submit">Simpan</button></div>
       </form>
     </dialog>
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite">
+      <span class="toast-icon" aria-hidden="true">!</span>
+      <span class="toast-message"></span>
+      <button class="toast-close" type="button" aria-label="Tutup notifikasi">×</button>
+    </div>
     <div id="loading" class="loading-screen"><span class="spinner"></span><span>Memuat sistem...</span></div>
   </main>
 </body>
