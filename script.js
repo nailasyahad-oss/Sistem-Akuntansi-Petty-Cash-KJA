@@ -56,6 +56,8 @@ const navItems = [
   { id: 'closing', label: 'Tutup buku', icon: '■', roles: ['ADMIN', 'MANAGER'] }
 ];
 
+let reportFilterDebounceTimer;
+
 function showLoading(show, compact = false) {
   const loading = $('#loading');
   loading.classList.toggle('compact', compact);
@@ -69,10 +71,11 @@ function notify(message, type = 'success') {
   toastMessage.textContent = message;
   toast.classList.toggle('error', type === 'error');
   toast.classList.toggle('warning', type === 'warning');
-  toastIcon.textContent = type === 'warning' ? '!' : type === 'error' ? '!' : '✓';
+  toast.classList.toggle('info', type === 'info');
+  toastIcon.textContent = type === 'error' ? '!' : type === 'warning' ? '!' : type === 'info' ? 'ⓘ' : '✓';
   toast.classList.add('show');
   window.clearTimeout(notify.timer);
-  notify.timer = window.setTimeout(() => toast.classList.remove('show'), 5600);
+  notify.timer = window.setTimeout(() => toast.classList.remove('show'), 5000);
 }
 
 function showFieldError(fieldName, message) {
@@ -182,11 +185,16 @@ async function loadReportData() {
     showLoading(false);
     if (txResult.error) throw txResult.error;
     if (inflowResult.error) throw inflowResult.error;
+    const txData = txResult.data || [];
+    const inflowData = inflowResult.data || [];
     state.reportData = {
-      transactions: txResult.data || [],
-      inflows: inflowResult.data || [],
+      transactions: txData,
+      inflows: inflowData,
       loaded: true
     };
+    if (txData.length === 0 && inflowData.length === 0) {
+      notify('Tidak ada transaksi atau pengisian pada rentang yang dipilih.', 'info');
+    }
     renderView();
   } catch (error) {
     showLoading(false);
@@ -245,7 +253,7 @@ function rekapKategoriMarkup() {
     catMap[key].count += 1;
   });
   const data = Object.values(catMap).sort((a, b) => b.total - a.total);
-  if (!data.length) return tableEmpty(4, 'Tidak ada data', 'Tidak ada transaksi dalam rentang yang dipilih.');
+  if (!data.length) return `<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Kategori</th><th>Total</th><th>Jumlah transaksi</th><th>Rata-rata</th></tr></thead><tbody></tbody></table></div>`;
   const totalCount = data.reduce((s, d) => s + d.count, 0);
   const totalAmount = data.reduce((s, d) => s + d.total, 0);
   return `<div class="rekap-grid"><div class="rekap-card"><div class="rekap-label">Total kategori</div><div class="rekap-value">${data.length}</div></div><div class="rekap-card"><div class="rekap-label">Total transaksi</div><div class="rekap-value">${totalCount}</div></div><div class="rekap-card"><div class="rekap-label">Total pengeluaran</div><div class="rekap-value">${money(totalAmount)}</div></div></div><div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Kategori</th><th>Total</th><th>Jumlah transaksi</th><th>Rata-rata</th></tr></thead><tbody>${data.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td class="amount">${money(item.total)}</td><td>${item.count}</td><td class="amount">${money(item.total / item.count)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -272,7 +280,7 @@ function rekapAkunMarkup() {
     akunMap[key].inflow += Number(r.requested_amount);
   });
   const data = Object.values(akunMap).sort((a, b) => a.name.localeCompare(b.name));
-  if (!data.length) return tableEmpty(4, 'Tidak ada data', 'Tidak ada transaksi dalam rentang yang dipilih.');
+  if (!data.length) return `<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Akun kas</th><th>Kode</th><th>Total masuk</th><th>Total keluar</th><th>Saldo bersih</th><th>Jumlah transaksi</th></tr></thead><tbody></tbody></table></div>`;
   return `<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Akun kas</th><th>Kode</th><th>Total masuk</th><th>Total keluar</th><th>Saldo bersih</th><th>Jumlah transaksi</th></tr></thead><tbody>${data.map((item) => { const net = item.inflow - item.outflow; return `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td><span class="cell-sub">${escapeHtml(item.code)}</span></td><td class="amount diff-zero">${money(item.inflow)}</td><td class="amount diff-nonzero">${money(item.outflow)}</td><td class="amount ${net >= 0 ? 'diff-zero' : 'diff-nonzero'}"><strong>${money(net)}</strong></td><td>${item.count}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 
@@ -302,11 +310,13 @@ function bukuKasMarkup() {
       status: t.status,
       isVoid: t.status === 'void'
     }))
-  ].sort((a, b) => a.date.localeCompare(b.date));
-  if (!entries.length) return tableEmpty(1, 'Tidak ada data', 'Tidak ada transaksi atau pengisian dalam rentang yang dipilih.');
-  let runningBalance = 0;
-  if (state.bukuKasMode === 'monthly') {
-    const months = {};
+   ].sort((a, b) => a.date.localeCompare(b.date));
+   let runningBalance = 0;
+   if (state.bukuKasMode === 'monthly') {
+      if (!entries.length) {
+        return bukuKasHeader() + `<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Bulan</th><th>Kas masuk</th><th>Kas keluar</th><th>Jumlah keluar</th><th>Saldo berjalan</th></tr></thead><tbody></tbody></table></div>`;
+      }
+      const months = {};
     entries.forEach((e) => {
       const m = e.date.slice(0, 7);
       if (!months[m]) months[m] = { in: 0, out: 0, count: 0 };
@@ -480,6 +490,10 @@ async function exportExcel() {
     const wb = XLSX.utils.book_new();
     const headers = ['Tanggal', 'Uraian', 'Kategori', 'Jenis', 'Keluar', 'Masuk', 'Akun', 'Pembuat'];
     const entries = getExportEntries();
+    if (!entries.length) {
+      notify('Tidak ada data untuk diekspor pada rentang yang dipilih.', 'info');
+      return;
+    }
     const ws = XLSX.utils.aoa_to_sheet([]);
     XLSX.utils.sheet_add_aoa([[{ t: 's', v: `Buku Kas ${f.startDate || '-'} s/d ${f.endDate || '-'} | ${reportPeriodLabel()}` }]], ws, { origin: 'A1' });
     XLSX.utils.sheet_add_aoa([headers], ws, { origin: 'A2' });
@@ -525,6 +539,10 @@ async function exportPDF() {
     doc.setFontSize(8);
     doc.text(`Dicetak: ${dateLabel(new Date().toISOString())} | ${f.accountId ? 'Akun: ' + accountName(f.accountId) : 'Semua akun'} | ${f.categoryId ? 'Kategori: ' + categoryName(f.categoryId) : 'Semua kategori'} | ${f.creatorId ? 'Pembuat: ' + userName(f.creatorId) : 'Semua pembuat'}`, 20, 28);
     const entries = getExportEntries();
+    if (!entries.length) {
+      notify('Tidak ada data untuk diekspor pada rentang yang dipilih.', 'info');
+      return;
+    }
     doc.autoTable({
       startY: 32,
       head: [['Tanggal', 'Uraian', 'Kategori', 'Jenis', 'Keluar', 'Masuk', 'Akun']],
@@ -1211,12 +1229,19 @@ document.addEventListener('change', async (event) => {
     state.reportFilters.accountId = $('#report-account')?.value || $('#export-account')?.value || '';
     state.reportFilters.creatorId = $('#report-creator')?.value || '';
     state.reportFilters.categoryId = $('#report-category')?.value || '';
-    state.reportData = null;
-    if (state.view === 'reports' && (state.reportTab === 'buku-kas' || state.reportTab === 'rekap')) {
-      await loadReportData();
-    } else if (state.view === 'reports') {
-      renderView();
+    if (state.reportFilters.startDate && state.reportFilters.endDate && state.reportFilters.startDate > state.reportFilters.endDate) {
+      notify('Tanggal awal tidak boleh melewati tanggal akhir.', 'info');
+      return;
     }
+    state.reportData = null;
+    clearTimeout(reportFilterDebounceTimer);
+    reportFilterDebounceTimer = setTimeout(async () => {
+      if (state.view === 'reports' && (state.reportTab === 'buku-kas' || state.reportTab === 'rekap')) {
+        await loadReportData();
+      } else if (state.view === 'reports') {
+        renderView();
+      }
+    }, 300);
   }
 });
 
