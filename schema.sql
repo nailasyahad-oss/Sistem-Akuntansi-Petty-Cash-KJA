@@ -501,10 +501,80 @@ $$;
 revoke all on function public.void_petty_cash_transaction(uuid, text) from public, anon;
 grant execute on function public.void_petty_cash_transaction(uuid, text) to authenticated;
 
+-- [FITUR BARU] Tahap 5: kas opname (pencatatan stok kas fisik).
+-- Hanya MENCATAT: tidak mengubah saldo, tidak membuat transaksi otomatis.
+-- Riwayat tidak bisa diubah atau dihapus (hanya SELECT + INSERT, tidak ada UPDATE/DELETE).
+create table if not exists public.cash_counts (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.petty_cash_accounts (id),
+  counted_at timestamptz not null default now(),
+  system_balance numeric(14, 2) not null,
+  physical_amount numeric(14, 2) not null check (physical_amount >= 0),
+  difference numeric(14, 2) not null,
+  notes text,
+  created_by uuid not null references public.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists cash_counts_account_idx
+  on public.cash_counts (account_id);
+create index if not exists cash_counts_counted_at_idx
+  on public.cash_counts (counted_at desc);
+
+alter table public.cash_counts enable row level security;
+
+drop policy if exists cash_counts_read_authenticated on public.cash_counts;
+drop policy if exists cash_counts_insert_admin on public.cash_counts;
+
+create policy cash_counts_read_authenticated
+  on public.cash_counts for select to authenticated
+  using (public.current_app_role() in ('ADMIN', 'MANAGER'));
+create policy cash_counts_insert_admin
+  on public.cash_counts for insert to authenticated
+  with check (public.current_app_role() = 'ADMIN' and created_by = auth.uid());
+
+-- Hanya SELECT dan INSERT; riwayat kas opname tidak dapat diubah atau dihapus.
+grant select, insert on public.cash_counts to authenticated;
+
+-- [FITUR BARU] Tahap 6: tutup buku bulanan.
+-- Rekam rekaman tutup buku per akun kas per bulan. Sekali disimpan — tidak ada UPDATE/DELETE.
+create table if not exists public.monthly_closings (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.petty_cash_accounts (id),
+  closing_month date not null,
+  starting_balance numeric(14, 2) not null,
+  total_inflows numeric(14, 2) not null default 0,
+  total_outflows numeric(14, 2) not null default 0,
+  adjustment numeric(14, 2) not null default 0,
+  ending_balance numeric(14, 2) not null,
+  closed_by uuid not null references public.users (id),
+  closed_at timestamptz not null default now(),
+  notes text
+);
+
+create unique index if not exists monthly_closings_account_month_idx
+  on public.monthly_closings (account_id, closing_month);
+create index if not exists monthly_closings_closed_at_idx
+  on public.monthly_closings (closed_at desc);
+
+drop policy if exists monthly_closings_read_authenticated on public.monthly_closings;
+drop policy if not exists monthly_closings_insert_admin on public.monthly_closings;
+
+create policy monthly_closings_read_authenticated
+  on public.monthly_closings for select to authenticated
+  using (public.current_app_role() in ('ADMIN', 'MANAGER'));
+create policy monthly_closings_insert_admin
+  on public.monthly_closings for insert to authenticated
+  with check (public.current_app_role() = 'ADMIN' and closed_by = auth.uid());
+
+-- Hanya SELECT dan INSERT; rekaman tutup buku tidak dapat diubah atau dihapus.
+grant select, insert on public.monthly_closings to authenticated;
+
 alter table public.users enable row level security;
 alter table public.petty_cash_accounts enable row level security;
 alter table public.petty_cash_requests enable row level security;
 alter table public.petty_cash_transactions enable row level security;
+alter table public.monthly_closings enable row level security;
 
 -- Profiles are readable to authenticated users for names and role-based UI;
 -- there are deliberately no client-side profile mutation policies.

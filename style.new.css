@@ -204,6 +204,22 @@ tr.voided td .badge-pending { opacity: 0.6; }
 .void-filter { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 11px; cursor: pointer; }
 .void-filter input { width: 16px; height: 16px; margin: 0; accent-color: var(--maroon); cursor: pointer; }
 
+/* Cash opname difference indicator (Tahap 5) */
+.diff-zero { color: var(--green); }
+.diff-nonzero { color: var(--amber); }
+
+/* Monthly closing badges (Tahap 6) */
+.badge-closed { color: #1b4332; background: #d1e7dd; }
+.badge-open { color: #721c24; background: #f8d7da; }
+
+/* Monthly closing summary grid in dialog */
+.summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 16px 0; padding: 12px 14px; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; }
+.summary-grid legend { font-size: 11px; font-weight: 600; color: var(--ink); padding: 0 6px; }
+.summary-item { display: flex; flex-direction: column; gap: 2px; }
+.summary-label { font-size: 11px; color: var(--muted); }
+.summary-end .summary-label { font-weight: 600; color: var(--ink); }
+.summary-grid input { width: 100%; font-size: 14px; padding: 4px 6px; border: 1px solid rgba(0,0,0,.12); border-radius: 4px; }
+
 .record-dialog { width: min(540px, calc(100vw - 28px)); max-height: min(90vh, 760px); margin: auto; padding: 0; color: var(--ink); background: rgba(255,250,246,.98); border: 1px solid rgba(255,255,255,.86); border-radius: 20px; box-shadow: var(--shadow); }
 .record-dialog::backdrop { background: rgba(37, 10, 15, .5); backdrop-filter: blur(5px); }
 .record-dialog form { padding: 23px; }
