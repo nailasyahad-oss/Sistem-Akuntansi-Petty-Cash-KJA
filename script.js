@@ -11,7 +11,7 @@ const state = {
   accounts: [],
   categories: [],
   requests: [],
-  transactions: [],
+   transactions: [],
   cashCounts: [],
   monthlyClosings: [],
   users: [],
@@ -20,12 +20,25 @@ const state = {
   filter: 'all',
   showVoided: false,
   reportMonth: new Date().toISOString().slice(0, 7),
-  closingMonth: new Date().toISOString().slice(0, 7)
+  closingMonth: new Date().toISOString().slice(0, 7),
+  reportTab: 'summary',
+  bukuKasMode: 'daily',
+  reportData: null,
+  reportFilters: { startDate: '', endDate: '', accountId: '', creatorId: '', categoryId: '' }
 };
 
 const $ = (selector, parent = document) => parent.querySelector(selector);
 const money = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value || 0));
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${value.slice(0, 10)}T00:00:00`)) : '-';
+const dateShortID = (value) => value ? new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${value.slice(0, 10)}T00:00:00`)) : '-';
+const reportPeriodLabel = () => {
+  const f = state.reportFilters;
+  if (f.startDate && f.endDate) return `${f.startDate} – ${f.endDate}`;
+  if (f.startDate) return `>= ${f.startDate}`;
+  if (f.endDate) return `<= ${f.endDate}`;
+  return 'Semua periode';
+  };
+const fileNameSafe = (s) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'report';
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const isAdmin = () => state.profile?.role === 'ADMIN';
 const userName = (id) => state.users.find((user) => user.id === id)?.full_name || 'Pengguna';
@@ -157,12 +170,283 @@ async function refreshData() {
   renderView();
 }
 
+async function loadReportData() {
+  try {
+    state.reportData = state.reportData || { transactions: [], categorySummary: [], accountSummary: [], loaded: false };
+    if (state.reportData.loaded) return;
+    showLoading(true);
+    const [txResult, catResult, accResult] = await Promise.all([
+      buildReportQuery().order('transaction_date', { ascending: false }),
+      supabaseClient.from('category_summary').select('*'),
+      supabaseClient.from('account_transaction_summary').select('*')
+    ]);
+    showLoading(false);
+    if (txResult.error) throw txResult.error;
+    if (catResult.error) throw catResult.error;
+    if (accResult.error) throw accResult.error;
+    state.reportData = {
+      transactions: txResult.data || [],
+      categorySummary: catResult.data || [],
+      accountSummary: accResult.data || [],
+      loaded: true
+    };
+    renderView();
+  } catch (error) {
+    showLoading(false);
+    notify(errorMessage(error), 'error');
+  }
+}
+
+function reportTabsMarkup() {
+  const tabs = [
+    { id: 'summary', label: 'Ringkasan' },
+    { id: 'buku-kas', label: 'Buku kas' },
+    { id: 'rekap', label: 'Rekap' },
+    { id: 'export', label: 'Ekspor' }
+  ];
+  return `<div class="report-tabs">${tabs.map((tab) => `<button class="report-tab ${state.reportTab === tab.id ? 'active' : ''}" data-report-tab="${tab.id}">${tab.label}</button>`).join('')}</div>`;
+}
+
+function reportFiltersMarkup() {
+  const accounts = state.accounts.filter((a) => a.is_active);
+  const creators = state.users.filter((u) => ['ADMIN', 'MANAGER'].includes(u.role));
+  const categories = state.categories.filter((c) => c.is_active);
+  const f = state.reportFilters;
+  const esc = (v) => escapeHtml(v ?? '');
+  const opt = (list, valueKey, labelKey, selected) =>
+    `<option value="">Semua</option>` + list.map((item) =>
+      `<option value="${item[valueKey]}" ${item[valueKey] == selected ? 'selected' : ''}>${esc(item[labelKey])}</option>`
+    ).join('');
+  return `<div class="report-filters">
+    <div><label for="report-start-date">Dari tanggal</label><input id="report-start-date" type="date" value="${f.startDate}"></div>
+    <div><label for="report-end-date">Sampai</label><input id="report-end-date" type="date" value="${f.endDate}"></div>
+    <div><label for="report-account">Akun kas</label><select id="report-account"><option value="">Semua akun</option>${accounts.map((a) => `<option value="${a.id}" ${a.id === f.accountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>
+    <div><label for="report-creator">Pembuat</label><select id="report-creator"><option value="">Semua pembuat</option>${creators.map((u) => `<option value="${u.id}" ${u.id === f.creatorId ? 'selected' : ''}>${esc(u.full_name || '')}</option>`).join('')}</select></div>
+    <div><label for="report-category">Kategori</label><select id="report-category"><option value="">Semua kategori</option>${categories.map((c) => `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+  </div>`;
+}
+
+function rekapKategoriMarkup() {
+  if (!state.reportData || !state.reportData.loaded) return tableEmpty(4, 'Klik "Rekap" untuk memuat data', 'Data sedang dimuat...');
+  const data = state.reportData.categorySummary;
+  if (!data.length) return tableEmpty(4, 'Tidak ada data', 'Tidak ada transaksi masuk dalam rentang ini.');
+  return `<div class="rekap-card"><div class="rekap-card"><div class="rekap-label">Total kategori</div><div class="rekap-value">${data.length}</div></div></div><div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Kategori</th><th>Total</th><th>Jumlah transaksi</th><th>Rata-rata</th></tr></thead><tbody>${data.map((item) => `<tr><td>${escapeHtml(item.category_name || 'Tanpa kategori')}</td><td class="amount">${money(item.total_amount)}</td><td>${item.transaction_count}</td><td class="amount">${money(item.avg_amount)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function rekapAkunMarkup() {
+  if (!state.reportData || !state.reportData.loaded) return tableEmpty(4, 'Klik "Rekap" untuk memuat data', 'Data sedang dimuat...');
+  const data = state.reportData.accountSummary;
+  if (!data.length) return tableEmpty(4, 'Tidak ada data', 'Tidak ada transaksi masuk dalam rentang ini.');
+  return `<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Akun kas</th><th>Total masuk</th><th>Total keluar</th><th>Jumlah transaksi</th></tr></thead><tbody>${data.map((item) => `<tr><td><strong>${escapeHtml(item.account_name)}</strong></td><td class="amount diff-zero">${money(item.total_inflow)}</td><td class="amount diff-nonzero">${money(item.total_outflow)}</td><td>${item.transaction_count}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function bukuKasMarkup() {
+  if (!state.reportData || !state.reportData.loaded) return tableEmpty(1, 'Klik tombol di bawah untuk memuat buku kas', 'Data akan dimuat dari database.');
+  const tx = state.reportData.transactions || [];
+  if (!tx.length) return tableEmpty(1, 'Tidak ada data', 'Tidak ada transaksi dalam rentang yang dipilih.');
+  let runningBalance = 0;
+  if (state.bukuKasMode === 'monthly') {
+    const months = {};
+    tx.forEach((t) => {
+      const m = t.transaction_date.slice(0, 7);
+      if (!months[m]) months[m] = { in: 0, out: 0, count: 0 };
+      months[m].out += Number(t.amount);
+      months[m].count += 1;
+    });
+    const rows = Object.keys(months).sort().map((m) => {
+      const d = months[m];
+      runningBalance -= d.out;
+      return `<tr><td>${m}</td><td class="amount">-</td><td class="amount">${money(d.out)}</td><td>${d.count}</td><td class="amount running-balance">${money(runningBalance)}</td></tr>`;
+    });
+    return `<div class="buku-kas-mode"><button class="buku-kas-mode-btn ${state.bukuKasMode === 'daily' ? 'active' : ''}" data-bukukas-mode="daily">Hari</button><button class="buku-kas-mode-btn ${state.bukuKasMode === 'monthly' ? 'active' : ''}" data-bukukas-mode="monthly">Bulan</button></div>${reportFiltersMarkup()}<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Bulan</th><th>Kas masuk</th><th>Kas keluar</th><th>Jumlah</th><th>Saldo berjalan</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  const rows = tx.map((t) => {
+    const isVoid = t.status === 'void';
+    const amountDisplay = isVoid
+      ? `<span class="voided-cell">${money(t.amount)} <span class="badge-void-small">Dibatalkan</span></span>`
+      : money(t.amount);
+    if (!isVoid) runningBalance -= Number(t.amount);
+    return `<tr class="${isVoid ? 'voided' : ''}">
+      <td>${dateShortID(t.transaction_date)}${isVoid ? ' <span class="badge-void-small">VOID</span>' : ''}</td>
+      <td>${escapeHtml(t.description)}</td>
+      <td>${escapeHtml(t.category_name || 'Tanpa kategori')}</td>
+      <td class="amount voided-cell">${isVoid ? money(t.amount) : ''}</td>
+      <td class="amount">${isVoid ? '' : money(t.amount)}</td>
+      <td><span class="badge ${isVoid ? 'badge-void' : 'badge-pending'}">Kas keluar</span></td>
+      <td class="amount running-balance">${money(runningBalance)}</td></tr>`;
+  });
+  return `<div class="buku-kas-mode"><button class="buku-kas-mode-btn ${state.bukuKasMode === 'daily' ? 'active' : ''}" data-bukukas-mode="daily">Hari</button><button class="buku-kas-mode-btn ${state.bukuKasMode === 'monthly' ? 'active' : ''}" data-bukukas-mode="monthly">Bulan</button></div>${reportFiltersMarkup()}<div class="table-scroll"><table class="buku-kas-table"><thead><tr><th>Tanggal</th><th>Uraian</th><th>Kategori</th><th>Kas masuk</th><th>Kas keluar</th><th>Jenis</th><th>Saldo berjalan</th></tr></thead><tbody>${rows.join('')}</tbody></table></div><div style="margin-top:12px"><button class="button button-ghost" data-action="load-bukukas">Muat buku kas</button></div>`;
+}
+
+function reportExportMarkup() {
+  return `<div class="panel"><h3>Ekspor data laporan</h3><div class="report-filters">
+    <div><label for="export-start-date">Dari</label><input id="export-start-date" type="date" value="${state.reportFilters.startDate}"></div>
+    <div><label for="export-end-date">Sampai</label><input id="export-end-date" type="date" value="${state.reportFilters.endDate}"></div>
+    <div><label for="export-account">Akun</label><select id="export-account"><option value="">Semua</option>${state.accounts.filter((a) => a.is_active).map((a) => `<option value="${a.id}" ${a.id === state.reportFilters.accountId ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}</select></div>
+  </div>
+  <p class="cell-sub">Data akan diekspor sesuai filter di atas. Pastikan sudah memuat data buku kas/rekap terbaru.</p>
+  <div class="export-bar">
+    <button class="button button-primary" data-action="export-excel">＼ Excel (.xlsx)</button>
+    <button class="button button-ghost" data-action="export-pdf">＼ PDF</button>
+  </div>
+  <p class="cell-sub">Ekspor dilakukan sepenuhnya di browser. Jika Offline, pustaka ekspor tidak dapat dimuat.</p>
+  </div>`;
+}
+
+function reportPageMarkup() {
+  let tabContent = '';
+  if (state.reportTab === 'summary') {
+    tabContent = reportsMarkup();
+  } else if (state.reportTab === 'buku-kas') {
+    if (!state.reportData || !state.reportData.loaded) {
+      tabContent = `<div class="panel"><p class="cell-sub">Klik "Muat buku kas" untuk memuat data dari server.</p></div>`;
+    } else {
+      tabContent = bukuKasMarkup();
+    }
+  } else if (state.reportTab === 'rekap') {
+    if (!state.reportData || !state.reportData.loaded) {
+      tabContent = `<div class="panel"><p class="cell-sub">Klik "Muat rekap" untuk memuat data dari server.</p></div>`;
+    } else {
+      tabContent = rekapKategoriMarkup() + rekapAkunMarkup();
+    }
+  } else if (state.reportTab === 'export') {
+    tabContent = reportExportMarkup();
+  }
+  return `<div class="report-page">${reportTabsMarkup()}${tabContent}</div>`;
+}
+
+async function loadExportLib(url) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error(`Gagal memuat pustaka: ${url}`));
+    document.head.appendChild(script);
+  });
+}
+
+function getExportRows(transactions) {
+  return transactions.map((t) => [
+    dateShortID(t.transaction_date),
+    escapeHtml(t.description),
+    escapeHtml(t.category_name || 'Tanpa kategori'),
+    t.status === 'void' ? 'VOID' : 'Kas keluar',
+    money(t.amount),
+    escapeHtml(t.account_name || ''),
+    escapeHtml(t.creator_name || '')
+  ]);
+}
+
+async function exportExcel() {
+  try {
+    const f = state.reportFilters;
+    if (!state.reportData || !state.reportData.loaded || !state.reportData.transactions) {
+      notify('Silakan muat data buku kas terlebih dahulu.', 'warning');
+      return;
+    }
+    if (typeof window.XLSX === 'undefined') {
+      notify('Memuat pustaka Excel...', 'warning');
+      await loadExportLib('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    }
+    if (typeof window.Sheets === 'undefined' || !window.Sheets.utils || !window.XLSX.writeFile) {
+      notify('Pustaka Excel tidak tersedia. Cek koneksi internet Anda.', 'error');
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    const headers = ['Tanggal', 'Uraian', 'Kategori', 'Jenis', 'Nominal', 'Akun', 'Pembuat'];
+    const rows = [headers, ...getExportRows(state.reportData.transactions)];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const range = `A1:${XLSX.utils.encode_cell({ r: rows.length - 1, c: headers.length - 1 })}`;
+    XLSX.utils.sheet_add_aoa([[{ t: 's', v: `Buku Kas ${f.startDate || '-'} s/d ${f.endDate || '-'}` }]], ws, { origin: 'A1' });
+    XLSX.utils.book_append_sheet(wb, ws, 'Buku Kas');
+    if (state.reportData.categorySummary?.length) {
+      const catHeaders = ['Kategori', 'Total', 'Jumlah transaksi', 'Rata-rata'];
+      const catRows = [catHeaders, ...state.reportData.categorySummary.map((c) => [escapeHtml(c.category_name || 'Tanpa kategori'), money(c.total_amount), c.transaction_count, money(c.avg_amount)])];
+      const catWs = XLSX.utils.aoa_to_sheet(catRows);
+      XLSX.utils.book_append_sheet(wb, catWs, 'Rekap Kategori');
+    }
+    if (state.reportData.accountSummary?.length) {
+      const accHeaders = ['Akun', 'Total masuk', 'Total keluar', 'Jumlah transaksi'];
+      const accRows = [accHeaders, ...state.reportData.accountSummary.map((a) => [escapeHtml(a.account_name), money(a.total_inflow), money(a.total_outflow), a.transaction_count])];
+      const accWs = XLSX.utils.aoa_to_sheet(accRows);
+      XLSX.utils.book_append_sheet(wb, accWs, 'Rekap Akun');
+    }
+    const period = `${f.startDate || 'semua'}_${f.endDate || 'semua'}`;
+    const filename = `buku-kas_${fileNameSafe(period.replace(/_/g, '-'))}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    notify(`Diekspor ke ${filename}`);
+  } catch (error) {
+    notify(`Ekspor Excel gagal: ${errorMessage(error)}`, 'error');
+  }
+}
+
+async function exportPDF() {
+  try {
+    const f = state.reportFilters;
+    if (!state.reportData || !state.reportData.loaded || !state.reportData.transactions) {
+      notify('Silakan muat data buku kas terlebih dahalu.', 'warning');
+      return;
+    }
+    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.autoTable === 'undefined') {
+      notify('Memuat pustaka PDF...', 'warning');
+      await loadExportLib('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+      await loadExportLib('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.3/dist/jspdfplugin.autotable.min.js');
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const title = `Laporan Buku Kas${f.startDate ? ' ' + f.startDate : ''} - ${f.endDate || ''}`;
+    doc.setFontSize(14);
+    doc.text(title, 20, 20);
+    doc.setFontSize(9);
+    doc.text(`Dicetak: ${dateLabel(new Date().toISOString())} | Akun: ${f.accountId ? accountName(f.accountId) : 'Semua'} | Kategori: ${f.categoryId ? categoryName(f.categoryId) : 'Semua'}`, 20, 28);
+    doc.autoTable({
+      startY: 35,
+      head: [['Tanggal', 'Uraian', 'Kategori', 'Jenis', 'Nominal', 'Akun']],
+      body: getExportRows(state.reportData.transactions).map((row, i) => ({
+        content: row,
+        styles: { fontSize: 7 }
+      }))
+    });
+    const period = `${f.startDate || 'semua'}_${f.endDate || 'semua'}`;
+    const filename = `buku-kas_${fileNameSafe(period.replace(/_/g, '-'))}.pdf`;
+    doc.save(filename);
+    notify(`Diekspor ke ${filename}`);
+  } catch (error) {
+    notify(`Ekspor PDF gagal: ${errorMessage(error)}`, 'error');
+  }
+}
+
+function buildReportQuery() {
+  const f = state.reportFilters;
+  let q = supabaseClient
+    .from('transaction_details')
+    .select('*', { count: 'exact' })
+    .neq('status', 'void');
+  if (f.startDate) q = q.gte('transaction_date', f.startDate);
+  if (f.endDate) q = q.lte('transaction_date', f.endDate);
+  if (f.accountId) q = q.eq('account_id', f.accountId);
+  if (f.creatorId) q = q.eq('created_by', f.creatorId);
+  if (f.categoryId) q = q.eq('category_id', f.categoryId);
+  return q;
+}
+
+async function loadFilteredTransactions() {
+  const q = buildReportQuery();
+  const { data, error, count } = await q.order('transaction_date', { ascending: false });
+  if (error) throw error;
+  return { data: data || [], count: count || 0 };
+}
+
 function setView(view) {
   state.view = view;
   state.search = '';
   state.filter = 'all';
   state.showVoided = false;
   if (view === 'reports' || view === 'closing') state.reportMonth = new Date().toISOString().slice(0, 7);
+  if (view === 'reports') {
+    state.reportTab = 'summary';
+    state.reportData = null;
+  }
   renderNavigation();
   renderView();
 }
@@ -176,7 +460,7 @@ function renderView() {
   if (state.view === 'requests') content.innerHTML = requestsMarkup();
   if (state.view === 'transactions') content.innerHTML = transactionsMarkup();
   if (state.view === 'accounts') content.innerHTML = accountsMarkup();
-  if (state.view === 'reports') content.innerHTML = reportsMarkup();
+  if (state.view === 'reports') content.innerHTML = reportPageMarkup();
   if (state.view === 'cash-counts') content.innerHTML = cashCountsMarkup();
   if (state.view === 'closing') content.innerHTML = monthlyClosingMarkup();
 }
@@ -641,6 +925,22 @@ $('#main-nav').addEventListener('click', (event) => {
 $('#content').addEventListener('click', async (event) => {
   const viewButton = event.target.closest('[data-view]');
   if (viewButton) return setView(viewButton.dataset.view);
+  const reportTab = event.target.closest('[data-report-tab]');
+  if (reportTab) {
+    state.reportTab = reportTab.dataset.reportTab;
+    if ((state.reportTab === 'buku-kas' || state.reportTab === 'rekap') && !state.reportData?.loaded) {
+      await loadReportData();
+    } else {
+      renderView();
+    }
+    return;
+  }
+  const modeBtn = event.target.closest('[data-bukukas-mode]');
+  if (modeBtn) {
+    state.bukuKasMode = modeBtn.dataset.bukukasMode;
+    renderView();
+    return;
+  }
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const { action, entity, id } = button.dataset;
@@ -655,6 +955,9 @@ $('#content').addEventListener('click', async (event) => {
   if (action === 'add-category') return addCategory();
   if (action === 'toggle-category') return toggleCategory(id, button.dataset.active === 'true');
   if (action === 'void') return voidTransaction(id);
+  if (action === 'load-bukukas') return loadReportData();
+  if (action === 'export-excel') return exportExcel();
+  if (action === 'export-pdf') return exportPDF();
 });
 
 async function addCategory() {
@@ -731,7 +1034,7 @@ document.addEventListener('input', (event) => {
   }
 });
 
-document.addEventListener('change', (event) => {
+document.addEventListener('change', async (event) => {
   if (event.target.matches('[data-filter]')) {
     state.filter = event.target.value;
     renderView();
@@ -753,6 +1056,20 @@ document.addEventListener('change', (event) => {
   if (event.target.matches('#closing-month-nav')) {
     state.closingMonth = event.target.value;
     renderView();
+  }
+  const isReportFilter = event.target.matches('#report-start-date, #report-end-date, #report-account, #report-creator, #report-category, #export-start-date, #export-end-date, #export-account');
+  if (isReportFilter) {
+    state.reportFilters.startDate = $('#report-start-date')?.value || $('#export-start-date')?.value || '';
+    state.reportFilters.endDate = $('#report-end-date')?.value || $('#export-end-date')?.value || '';
+    state.reportFilters.accountId = $('#report-account')?.value || $('#export-account')?.value || '';
+    state.reportFilters.creatorId = $('#report-creator')?.value || '';
+    state.reportFilters.categoryId = $('#report-category')?.value || '';
+    state.reportData = null;
+    if (state.view === 'reports' && (state.reportTab === 'buku-kas' || state.reportTab === 'rekap')) {
+      await loadReportData();
+    } else if (state.view === 'reports') {
+      renderView();
+    }
   }
 });
 

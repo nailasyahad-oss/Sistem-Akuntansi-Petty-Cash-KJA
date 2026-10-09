@@ -664,6 +664,76 @@ grant select, insert, update, delete on public.petty_cash_accounts to authentica
 grant select, insert, update, delete on public.petty_cash_requests to authenticated;
 grant select, insert, update, delete on public.petty_cash_transactions to authenticated;
 
+-- [FITUR BARU] Tahap 7: views untuk laporan dan ekspor.
+-- Views menggunakan security_invoker (default) sehingga RLS pada tabel dasar
+-- tetap diterapkan. Cukup concession SELECT kepada authenticated.
+
+-- View: transaksi dengan nama akun, kategori, dan pencreator —
+-- menyederhanakan query join untuk filter laporan sisi-klien.
+create or replace view public.transaction_details as
+select
+  t.id,
+  t.account_id,
+  a.account_code,
+  a.name               as account_name,
+  t.category_id,
+  c.name               as category_name,
+  t.created_by,
+  u.full_name          as creator_name,
+  t.transaction_type,
+  t.transaction_date,
+  t.description,
+  t.amount,
+  t.status,
+  t.created_at,
+  t.request_id
+from public.petty_cash_transactions t
+left join public.petty_cash_accounts    a on t.account_id  = a.id
+left join public.expense_categories     c on t.category_id = c.id
+left join public.users                  u on t.created_by  = u.id
+where t.transaction_type = 'OUT';
+
+-- View: rekap per kategori pengeluaran (hanya transaksi non-void).
+create or replace view public.category_summary as
+select
+  c.id               as category_id,
+  c.name             as category_name,
+  count(t.id)        as transaction_count,
+  sum(t.amount)      as total_amount,
+  avg(t.amount)      as avg_amount,
+  max(t.amount)      as max_amount,
+  min(t.amount)      as min_amount
+from public.petty_cash_transactions t
+left join public.expense_categories c on t.category_id = c.id
+where t.transaction_type = 'OUT' and t.status <> 'void'
+group by c.id, c.name
+order by sum(t.amount) desc;
+
+-- View: rekap per akun kas (total masuk dari request approved, total keluar dari transaksi non-void).
+create or replace view public.account_transaction_summary as
+select
+  a.id               as account_id,
+  a.account_code,
+  a.name             as account_name,
+  count(t.id)        as transaction_count,
+  sum(t.amount)      as total_outflow,
+  count(r.id)        as approved_request_count,
+  sum(r.requested_amount) as total_inflow
+from public.petty_cash_accounts a
+left join public.petty_cash_transactions t
+  on a.id = t.account_id
+  and t.transaction_type = 'OUT'
+  and t.status <> 'void'
+left join public.petty_cash_requests r
+  on a.id = r.account_id
+  and r.status = 'approved'
+group by a.id, a.account_code, a.name
+order by a.name;
+
+grant select on public.transaction_details to authenticated;
+grant select on public.category_summary to authenticated;
+grant select on public.account_transaction_summary to authenticated;
+
 -- Provision users through Supabase Auth, then add their matching profile:
 -- insert into public.users (id, full_name, role)
 -- values ('AUTH_USER_UUID', 'Nama Pengguna', 'ADMIN');

@@ -245,6 +245,46 @@ input:focus, select:focus, textarea:focus { border-color: #a76765; box-shadow: 0
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
+/* ===== Tahap 7: Laporan dan Ekspor ===== */
+
+/* Report tabs */
+.report-tabs { display: flex; gap: 2px; margin-bottom: 18px; background: var(--line); border-radius: 10px; padding: 3px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.report-tab { flex: 0 0 auto; padding: 8px 16px; font-size: 12px; font-weight: 600; border-radius: 8px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: all .15s ease; }
+.report-tab:hover { background: rgba(123,41,47,.04); }
+.report-tab.active { color: #fffaf6; background: linear-gradient(115deg, #59171b, #80383c 60%, #b8786f); box-shadow: 0 4px 12px rgba(89, 23, 27, .18); }
+
+/* Tahap 7 filter row */
+.report-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }
+.report-filters label { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 3px; display: block; }
+.report-filters input, .report-filters select { min-height: 38px; font-size: 12px; padding: 8px 12px; }
+
+/* Buku kas */
+.buku-kas-mode { display: inline-flex; gap: 2px; background: var(--line); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
+.buku-kas-mode button { flex: 1; padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 7px; border: 1px solid transparent; cursor: pointer; transition: all .15s ease; }
+.buku-kas-mode button:hover { background: rgba(123,41,47,.04); }
+.buku-kas-mode button.active { color: var(--maroon); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.buku-kas-table td .voided-cell { text-decoration: line-through; opacity: 0.6; }
+.buku-kas-table td .badge-void-small { color: var(--red); background: #fde2e1; font-size: 9px; padding: 1px 6px; border-radius: 4px; }
+.running-balance { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Rekap grid */
+.rekap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
+.rekap-card { background: rgba(255,255,255,.72); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.rekap-card .rekap-label { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+.rekap-card .rekap-value { font-size: 18px; font-weight: 700; color: var(--ink); }
+.rekap-card .rekap-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Export buttons */
+.export-bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 12px; align-items: center; }
+.export-bar .button-ghost { color: var(--maroon-dark); background: #fff; border: 1px solid var(--line); }
+.export-bar .button-ghost:hover { background: var(--maroon); color: #fffaf6; }
+
+/* Horizontal scroll wrapper for tables */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Loading overlay for export */
+.export-loading { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(248,240,234,.8); color: var(--maroon-dark); font-weight: 600; }
+
 @media (max-width: 1040px) {
   .workspace { grid-template-columns: 215px minmax(0, 1fr); }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -276,6 +316,8 @@ input:focus, select:focus, textarea:focus { border-color: #a76765; box-shadow: 0
   .toolbar-controls { width: 100%; }
   .toolbar input, .toolbar select { min-width: 0; flex: 1; }
   .report-grid { grid-template-columns: 1fr; }
+  .report-tabs { font-size: 11px; }
+  .rekap-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 440px) {
   .metric-grid { grid-template-columns: 1fr; }
