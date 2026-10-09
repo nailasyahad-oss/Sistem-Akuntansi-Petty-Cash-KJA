@@ -175,7 +175,7 @@ td { padding: 14px 16px; border-top: 1px solid rgba(89,23,27,.08); color: #51444
 td strong { color: var(--ink); font-size: 11px; }
 td .cell-sub { color: #988b88; }
 tr.voided td { text-decoration: line-through; opacity: 0.6; }
-tr.voided td .badge { opacity: 1; }
+tr.voided td .badge-void { opacity: 1; }
 tr.voided td .row-actions .small-action { opacity: 0.7; }
 tr:hover td { background: rgba(254,215,184,.15); }
 tr:hover.voided td { background: rgba(89,23,27,.04); }
@@ -278,43 +278,69 @@ input[type="checkbox"], input[type="radio"] { width: auto; height: auto; min-hei
 
 /* ===== Tahap 7: Laporan dan Ekspor ===== */
 
-/* Report tabs */
-.report-tabs { display: flex; gap: 2px; margin-bottom: 18px; background: var(--line); border-radius: 10px; padding: 3px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.report-tab { flex: 0 0 auto; padding: 8px 16px; font-size: 12px; font-weight: 600; border-radius: 8px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: all .15s ease; }
-.report-tab:hover { background: rgba(123,41,47,.04); }
-.report-tab.active { color: #fffaf6; background: linear-gradient(115deg, #59171b, #80383c 60%, #b8786f); box-shadow: 0 4px 12px rgba(89, 23, 27, .18); }
+/* Report page container */
+.report-page { display: flex; flex-direction: column; gap: 24px; }
 
-/* Tahap 7 filter row */
-.report-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }
-.report-filters label { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 3px; display: block; }
-.report-filters input, .report-filters select { min-height: 38px; font-size: 12px; padding: 8px 12px; }
+/* Report tabs — segmented control */
+.report-tabs { display: flex; gap: 4px; margin-bottom: 24px; background: rgba(254,215,184,.3); border-radius: 999px; padding: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; -webkit-scrollbar: none; scrollbar-width: none; }
+.report-tabs::-webkit-scrollbar { display: none; }
+.report-tab { flex: 1; min-width: fit-content; padding: 10px 22px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; text-align: center; color: var(--maroon-dark); transition: all .2s ease; }
+.report-tab:hover { background: rgba(255,255,255,.12); }
+.report-tab.active { color: #fffaf6; background: linear-gradient(120deg, #59171b, #7a3236); box-shadow: 0 4px 12px rgba(89, 23, 27, .18); }
+.report-tab:focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
 
-/* Buku kas */
-.buku-kas-mode { display: inline-flex; gap: 2px; background: var(--line); border-radius: 8px; padding: 3px; margin-bottom: 14px; }
-.buku-kas-mode button { flex: 1; padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 7px; border: 1px solid transparent; cursor: pointer; transition: all .15s ease; }
-.buku-kas-mode button:hover { background: rgba(123,41,47,.04); }
-.buku-kas-mode button.active { color: var(--maroon); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+/* Report panel (scoped ke halaman laporan) */
+.report-page .panel { background: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.8); border-radius: 22px; box-shadow: 0 12px 30px rgba(74,30,32,.06); overflow: hidden; }
+.report-page .panel-heading { padding: 22px 24px; }
+.report-page .panel-heading h3 { margin: 0; font: 700 18px Manrope, sans-serif; color: var(--maroon-dark); }
+.report-page .panel-heading p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.report-page .panel > h3 { padding: 22px 24px; margin: 0; font: 700 18px Manrope, sans-serif; color: var(--maroon-dark); border-bottom: 1px solid rgba(89,23,27,.08); }
+
+/* Rekap summary cards */
+.rekap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 0 24px 24px; }
+.rekap-card { background: rgba(255,255,255,.5); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; }
+.rekap-card:last-child { background: linear-gradient(135deg, #fed7b8, #f3b9a0); border: 1px solid #ffe7d9; }
+.rekap-card:last-child .rekap-value { color: var(--maroon-dark); }
+.rekap-card .rekap-label { font-size: 10px; color: var(--muted); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+.rekap-card .rekap-value { font-size: 26px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rekap-card .rekap-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Report table */
+.report-page .table-scroll { margin: 0 24px 24px; }
+.report-page table { width: 100%; }
+.report-page th { padding: 12px 24px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #956f69; background: rgba(254,215,184,.2); border: none; }
+.report-page td { padding: 14px 24px; border-top: 1px solid rgba(89,23,27,.07); }
+.report-page tr:hover td { background: rgba(254,215,184,.15); }
+.report-page tr:hover.voided td { background: rgba(89,23,27,.03); }
+.report-page td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+.report-page td.amount.out { color: var(--maroon); }
+.report-page td.amount.in { color: #2f6f4f; }
+.report-page th:not(:first-child) { text-align: right; }
+.report-page th:first-child { text-align: left; }
+.report-page .buku-kas-table td .badge-pending { color: var(--maroon); background: #fde9e2; }
+.report-page .buku-kas-table td .badge-approved { color: #2f6f4f; background: #d7f0de; }
 .buku-kas-table td .voided-cell { text-decoration: line-through; opacity: 0.6; }
 .buku-kas-table td .badge-void-small { color: var(--red); background: #fde2e1; font-size: 9px; padding: 1px 6px; border-radius: 4px; }
 .running-balance { font-weight: 700; font-variant-numeric: tabular-nums; }
 
-/* Rekap grid */
-.rekap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
-.rekap-card { background: rgba(255,255,255,.72); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-.rekap-card .rekap-label { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
-.rekap-card .rekap-value { font-size: 18px; font-weight: 700; color: var(--ink); }
-.rekap-card .rekap-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* Category in transaction table */
+.report-page td .category-name { color: var(--ink); font-weight: 600; font-size: 12px; }
+
+/* Tahap 7 filter row */
+.report-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0; }
+.report-filters label { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 3px; display: block; }
+.report-filters input, .report-filters select { min-height: 44px; font-size: 12px; padding: 8px 12px; border-radius: 999px; border: 1px solid #e8d7cf; }
+
+/* Buku kas mode toggle */
+.buku-kas-mode { display: inline-flex; gap: 2px; background: var(--line); border-radius: 999px; padding: 3px; margin-bottom: 16px; }
+.buku-kas-mode button { flex: 1; min-width: 60px; padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 1px solid transparent; cursor: pointer; transition: all .2s ease; }
+.buku-kas-mode button:hover { background: rgba(123,41,47,.04); }
+.buku-kas-mode button.active { color: var(--maroon); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
 
 /* Export buttons */
-.export-bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 12px; align-items: center; }
-.export-bar .button-ghost { color: var(--maroon-dark); background: #fff; border: 1px solid var(--line); }
-.export-bar .button-ghost:hover { background: var(--maroon); color: #fffaf6; }
-
-/* Horizontal scroll wrapper for tables */
-.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-
-/* Loading overlay for export */
-.export-loading { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(248,240,234,.8); color: var(--maroon-dark); font-weight: 600; }
+.export-bar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 0 24px; }
+.export-bar .button-primary { min-height: 44px; padding: 0 18px; font-size: 12px; }
+.export-bar .button-ghost { min-height: 44px; padding: 0 18px; font-size: 12px; border-radius: 999px; }
 
 @media (max-width: 1040px) {
   .workspace { grid-template-columns: 215px minmax(0, 1fr); }
@@ -324,6 +350,12 @@ input[type="checkbox"], input[type="radio"] { width: auto; height: auto; min-hei
 @media (max-width: 900px) {
   .toolbar .search-field { width: 100%; min-width: 100%; }
   .toolbar .void-filter { width: 100%; }
+  .report-filters { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .report-filters { grid-template-columns: 1fr; }
+  .buku-kas-mode { display: block; }
+  .export-bar { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 760px) {
   .login-screen { grid-template-columns: 1fr; }
@@ -352,7 +384,12 @@ input[type="checkbox"], input[type="radio"] { width: auto; height: auto; min-hei
   .toolbar input, .toolbar select { min-width: 0; flex: 1; min-height: 44px; }
   .report-grid { grid-template-columns: 1fr; }
   .report-tabs { font-size: 11px; }
-  .rekap-grid { grid-template-columns: 1fr; }
+  .rekap-grid { grid-template-columns: 1fr; margin: 0; }
+  .rekap-grid .rekap-card:last-child { margin-top: 0; }
+  .report-page .table-scroll { margin: 0 8px 16px; }
+  .report-page .panel-heading { padding: 18px 20px; }
+  .report-page .panel > h3 { padding: 18px 20px; }
+  .export-bar { padding: 0 8px; }
 }
 @media (max-width: 440px) {
   .metric-grid { grid-template-columns: 1fr; }
