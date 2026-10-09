@@ -708,7 +708,7 @@ async function voidTransaction(id) {
   }
 }
 
-$('#content').addEventListener('input', (event) => {
+document.addEventListener('input', (event) => {
   if (event.target.matches('[data-search]')) {
     state.search = event.target.value;
     const position = event.target.selectionStart;
@@ -731,7 +731,7 @@ $('#content').addEventListener('input', (event) => {
   }
 });
 
-$('#content').addEventListener('change', (event) => {
+document.addEventListener('change', (event) => {
   if (event.target.matches('[data-filter]')) {
     state.filter = event.target.value;
     renderView();
