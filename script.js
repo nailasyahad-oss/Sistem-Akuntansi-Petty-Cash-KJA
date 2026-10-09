@@ -16,6 +16,7 @@ const state = {
   editing: null,
   search: '',
   filter: 'all',
+  showVoided: false,
   reportMonth: new Date().toISOString().slice(0, 7)
 };
 
@@ -151,6 +152,7 @@ function setView(view) {
   state.view = view;
   state.search = '';
   state.filter = 'all';
+  state.showVoided = false;
   renderNavigation();
   renderView();
 }
@@ -173,7 +175,7 @@ function accountBalance(accountId) {
     .filter((request) => request.account_id === accountId && request.status === 'approved')
     .reduce((total, request) => total + Number(request.requested_amount), 0);
   const cashOut = state.transactions
-    .filter((item) => item.account_id === accountId && item.transaction_type === 'OUT')
+    .filter((item) => item.account_id === accountId && item.transaction_type === 'OUT' && item.status !== 'void')
     .reduce((total, item) => total + Number(item.amount), 0);
   return Number(account?.initial_balance || 0) + approvedInflow - cashOut;
 }
@@ -184,7 +186,7 @@ function totals(transactions = state.transactions) {
       .filter((request) => request.status === 'approved' && request.account_id)
       .reduce((sum, request) => sum + Number(request.requested_amount), 0),
     OUT: transactions
-      .filter((item) => item.transaction_type === 'OUT')
+      .filter((item) => item.transaction_type === 'OUT' && item.status !== 'void')
       .reduce((sum, item) => sum + Number(item.amount), 0)
   };
 }
@@ -213,8 +215,15 @@ function requestRows(list, compact = false) {
 function transactionRows(list, compact = false) {
   if (!list.length) return tableEmpty(compact ? 3 : 5, 'Belum ada transaksi', 'Transaksi kas kecil akan tampil di sini.');
   return list.map((item) => {
-    const actions = isAdmin() ? `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="delete" data-entity="transaction" data-id="${item.id}">Hapus</button>` : '—';
-    return `<tr><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge badge-pending">Kas keluar</span></td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
+    const isVoided = item.status === 'void';
+    const voidBadge = isVoided ? '<span class="badge badge-void">Dibatalkan</span>' : '';
+    const rowClass = isVoided ? 'voided' : '';
+    const actions = isAdmin()
+      ? isVoided
+        ? `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button>`
+        : `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="void" data-entity="transaction" data-id="${item.id}">Batalkan</button>`
+      : '—';
+    return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge badge-pending">Kas keluar</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
   }).join('');
 }
 
@@ -260,14 +269,14 @@ function requestsMarkup() {
 function filteredTransactions() {
   return state.transactions.filter((item) => item.transaction_type === 'OUT').filter((item) => {
     const text = `${item.description} ${accountName(item.account_id)} ${userName(item.created_by)}`.toLowerCase();
-    return text.includes(state.search.toLowerCase()) && (state.filter === 'all' || item.transaction_type === state.filter);
+    return text.includes(state.search.toLowerCase()) && (state.filter === 'all' || item.transaction_type === state.filter) && (state.showVoided || item.status !== 'void');
   });
 }
 
 function transactionsMarkup() {
   const addButton = isAdmin() ? '<button class="button button-primary" data-action="new" data-entity="transaction">＋ Catat transaksi</button>' : '';
   const categoryManager = isAdmin() ? `<section class="panel category-panel"><div class="panel-heading"><div><h3>Kategori pengeluaran</h3><p>${state.categories.filter((category) => category.is_active).length} kategori aktif</p></div><button class="small-action" data-action="add-category">+ Tambah kategori</button></div><div class="category-list">${state.categories.map((category) => `<span class="category-pill ${category.is_active ? '' : 'inactive'}">${escapeHtml(category.name)}<button type="button" data-action="toggle-category" data-id="${category.id}" data-active="${category.is_active}">${category.is_active ? 'Nonaktifkan' : 'Aktifkan'}</button></span>`).join('')}</div></section>` : '';
-  return `<div class="toolbar"><h2>Riwayat transaksi <span class="cell-sub">${filteredTransactions().length} data</span></h2><div class="toolbar-controls"><input class="search-field" data-search placeholder="Cari pengeluaran atau akun..." value="${escapeHtml(state.search)}" aria-label="Cari transaksi">${addButton}</div></div>${categoryManager}
+  return `<div class="toolbar"><h2>Riwayat transaksi <span class="cell-sub">${filteredTransactions().length} data</span></h2><div class="toolbar-controls"><input class="search-field" data-search placeholder="Cari pengeluaran atau akun..." value="${escapeHtml(state.search)}" aria-label="Cari transaksi"><label class="void-filter"><input type="checkbox" data-show-void ${state.showVoided ? 'checked' : ''}> Tampilkan yang dibatalkan</label>${addButton}</div></div>${categoryManager}
     <section class="panel"><div class="table-wrap"><table><thead><tr><th>Uraian</th><th>Akun kas</th><th>Jenis</th><th>Kategori</th><th>Nominal</th><th>Tindakan</th></tr></thead><tbody>${transactionRows(filteredTransactions())}</tbody></table></div></section>`;
 }
 
@@ -278,7 +287,7 @@ function accountsMarkup() {
 }
 
 function reportsMarkup() {
-  const monthlyOutflows = state.transactions.filter((item) => item.transaction_type === 'OUT' && item.transaction_date.slice(0, 7) === state.reportMonth);
+  const monthlyOutflows = state.transactions.filter((item) => item.transaction_type === 'OUT' && item.status !== 'void' && item.transaction_date.slice(0, 7) === state.reportMonth);
   const monthlyInflows = state.requests.filter((request) => request.status === 'approved' && request.account_id && request.reviewed_at?.slice(0, 7) === state.reportMonth);
   const sum = {
     IN: monthlyInflows.reduce((total, request) => total + Number(request.requested_amount), 0),
@@ -468,6 +477,7 @@ $('#content').addEventListener('click', async (event) => {
   if (action === 'reject') return reviewRequest(id, 'rejected');
   if (action === 'add-category') return addCategory();
   if (action === 'toggle-category') return toggleCategory(id, button.dataset.active === 'true');
+  if (action === 'void') return voidTransaction(id);
 });
 
 async function addCategory() {
@@ -500,6 +510,27 @@ async function toggleCategory(id, wasActive) {
   }
 }
 
+async function voidTransaction(id) {
+  if (!isAdmin()) return;
+  const reason = window.prompt('Masukkan alasan pembatalan (minimal 5 karakter):');
+  if (reason !== null && (!reason.trim() || reason.trim().length < 5)) {
+    notify('Alasan pembatalan wajib diisi minimal 5 karakter.', 'error');
+    return;
+  }
+  if (!reason) return;
+  try {
+    const { error } = await supabaseClient.rpc('void_petty_cash_transaction', {
+      p_transaction_id: id,
+      p_reason: reason.trim()
+    });
+    if (error) throw error;
+    notify('Transaksi berhasil dibatalkan.');
+    await refreshData();
+  } catch (voidError) {
+    notify(errorMessage(voidError), 'error');
+  }
+}
+
 $('#content').addEventListener('input', (event) => {
   if (event.target.matches('[data-search]')) {
     state.search = event.target.value;
@@ -519,6 +550,10 @@ $('#content').addEventListener('input', (event) => {
 $('#content').addEventListener('change', (event) => {
   if (event.target.matches('[data-filter]')) {
     state.filter = event.target.value;
+    renderView();
+  }
+  if (event.target.matches('[data-show-void]')) {
+    state.showVoided = event.target.checked;
     renderView();
   }
 });

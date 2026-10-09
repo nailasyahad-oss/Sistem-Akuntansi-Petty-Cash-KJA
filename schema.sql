@@ -369,6 +369,138 @@ create trigger petty_cash_transactions_validate_balance
 before insert or update on public.petty_cash_transactions
 for each row execute function public.validate_petty_cash_balance();
 
+-- [FITUR BARU] Tahap 4: koreksi transaksi (void/reversal).
+-- Mekanisme yang dipilih: VOID (bukan reversal).
+--
+-- Alasan pemilihan void:
+--   1. Rumus saldo saat ini: initial_balance + sum(approved_requests) - sum(OUT_posted).
+--      Membatalkan transaksi OUT = mengecualikannya dari pengurangan sehingga
+--      saldo selalu naik (atau tetap). Tidak pernah menyebabkan saldo minus.
+--   2. Tidak menciptakan baris transaksi tambahan, menjaga jejak audit tetap
+--      utuh dan tidak menambah kompleksitas rekonstruksi saldo.
+--   3. Reversal (baris IN + ve) cocok bila sistem punya sisi DEBIT/KREDIT,
+--      tetapi sistem ini hanya punya kas keluar (OUT), jadi void lebih bersih.
+-- Kolom reversal_of disertakan (nullable, selalu NULL untuk void) untuk
+-- kemungkinan penambahan mekanisme reversal di masa depan.
+alter table public.petty_cash_transactions
+  add column if not exists status text not null default 'posted'
+    check (status in ('posted', 'void')),
+  add column if not exists void_reason text,
+  add column if not exists voided_by uuid references public.users (id),
+  add column if not exists voided_at timestamptz,
+  add column if not exists reversal_of uuid references public.petty_cash_transactions (id);
+
+-- Semua transaksi existing otomatis dapat status 'posted' (DEFAULT),
+-- sehingga perubahan ini tidak mengubah saldo akun yang ada.
+-- Query verifikasi saldo sebelum dan sesudah harus identik:
+--   SELECT a.id, a.name,
+--     coalesce(a.initial_balance,0)
+--     + coalesce((SELECT sum(r.requested_amount) FROM petty_cash_requests r
+--                 WHERE r.account_id=a.id AND r.status='approved'),0)
+--     - coalesce((SELECT sum(t.amount) FROM petty_cash_transactions t
+--                 WHERE t.account_id=a.id AND t.transaction_type='OUT'
+--                   AND t.status='posted'),0) AS saldo_kas
+--   FROM petty_cash_accounts a ORDER BY a.name;
+
+-- Perbarui trigger saldo agar mengecualikan transaksi void dari perhitungan.
+-- Perilaku data existing tidak berubah karena semua transaksi existing = posted.
+create or replace function public.validate_petty_cash_balance()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  target_account_id uuid;
+  current_balance numeric(14, 2);
+begin
+  select id
+  into target_account_id
+  from public.petty_cash_accounts
+  where id = new.account_id
+  for update;
+
+  if tg_op = 'UPDATE' and old.account_id is distinct from new.account_id then
+    select id
+    from public.petty_cash_accounts
+    where id = old.account_id
+    for update;
+  end if;
+
+  select
+    coalesce(a.initial_balance, 0)
+      + coalesce((
+        select sum(r.requested_amount)
+        from public.petty_cash_requests r
+        where r.account_id = a.id
+          and r.status = 'approved'
+      ), 0)
+      - coalesce((
+        select sum(t.amount)
+        from public.petty_cash_transactions t
+        where t.account_id = a.id
+          and t.id is distinct from new.id
+          and t.transaction_type = 'OUT'
+          and t.status = 'posted'
+      ), 0)
+  into current_balance
+  from public.petty_cash_accounts a
+  where a.id = target_account_id;
+
+  if current_balance - new.amount < 0 then
+    raise exception
+      'Saldo akun tidak mencukupi. Saldo saat ini Rp %',
+      current_balance
+      using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_transactions_validate_balance on public.petty_cash_transactions;
+create trigger petty_cash_transactions_validate_balance
+before insert or update on public.petty_cash_transactions
+for each row execute function public.validate_petty_cash_balance();
+
+-- Prosedur void transaksi: hanya ADMIN, alasan wajib >= 5 karakter,
+-- tidak bisa void ulang, dan tidak pernah membuat saldo minus.
+-- Pengecekan periode tertutup (Tahap 6) akan ditambahkan pada trigger/fungsi ini nanti.
+create or replace function public.void_petty_cash_transaction(
+  p_transaction_id uuid,
+  p_reason text
+)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if public.current_app_role() <> 'ADMIN' then
+    raise exception 'Akses ditolak. Hanya admin yang dapat membatalkan transaksi.' using errcode = '42501';
+  end if;
+
+  if nullif(btrim(p_reason), '') is null or length(btrim(p_reason)) < 5 then
+    raise exception 'Alasan pembatalan wajib diisi minimal 5 karakter.' using errcode = '22023';
+  end if;
+
+  update public.petty_cash_transactions
+  set status = 'void',
+      void_reason = btrim(p_reason),
+      voided_by = auth.uid(),
+      voided_at = now()
+  where id = p_transaction_id
+    and status = 'posted';
+
+  if not found then
+    raise exception 'Transaksi tidak ditemukan atau sudah dibatalkan.' using errcode = 'P0001';
+  end if;
+end;
+$$;
+
+revoke all on function public.void_petty_cash_transaction(uuid, text) from public, anon;
+grant execute on function public.void_petty_cash_transaction(uuid, text) to authenticated;
+
 alter table public.users enable row level security;
 alter table public.petty_cash_accounts enable row level security;
 alter table public.petty_cash_requests enable row level security;

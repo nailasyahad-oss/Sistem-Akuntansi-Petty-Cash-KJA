@@ -196,6 +196,14 @@ td strong { color: var(--ink); font-size: 11px; }
 .balance-alert { display: flex; align-items: center; gap: 11px; padding: 13px 15px; color: #6d5148; background: linear-gradient(110deg, #fff0dc, #fce3df); border: 1px solid rgba(255,255,255,.9); border-left: 4px solid #bd8067; border-radius: 13px; box-shadow: 0 8px 20px rgba(74,30,27,.06); font-size: 11px; }
 .balance-alert strong { color: var(--maroon-dark); }
 
+/* Void transaction (Tahap 4) */
+.badge-void { color: #8a3138; background: #fce8e6; }
+tr.voided td strong { text-decoration: line-through; }
+tr.voided td .amount { text-decoration: line-through; }
+tr.voided td .badge-pending { opacity: 0.6; }
+.void-filter { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 11px; cursor: pointer; }
+.void-filter input { width: 16px; height: 16px; margin: 0; accent-color: var(--maroon); cursor: pointer; }
+
 .record-dialog { width: min(540px, calc(100vw - 28px)); max-height: min(90vh, 760px); margin: auto; padding: 0; color: var(--ink); background: rgba(255,250,246,.98); border: 1px solid rgba(255,255,255,.86); border-radius: 20px; box-shadow: var(--shadow); }
 .record-dialog::backdrop { background: rgba(37, 10, 15, .5); backdrop-filter: blur(5px); }
 .record-dialog form { padding: 23px; }
