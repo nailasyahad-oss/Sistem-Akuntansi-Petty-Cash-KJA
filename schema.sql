@@ -558,7 +558,7 @@ create index if not exists monthly_closings_closed_at_idx
   on public.monthly_closings (closed_at desc);
 
 drop policy if exists monthly_closings_read_authenticated on public.monthly_closings;
-drop policy if not exists monthly_closings_insert_admin on public.monthly_closings;
+drop policy if exists monthly_closings_insert_admin on public.monthly_closings;
 
 create policy monthly_closings_read_authenticated
   on public.monthly_closings for select to authenticated
