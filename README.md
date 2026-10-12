@@ -1,8 +1,8 @@
 # Sistem Akuntansi Petty Cash KJA
 
-[![Demo](https://img.shields.io/badge/Demo-Buka_Aplikasi-59171b)](https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/)
+[![Demo](https://img.shields.io/badge/Demo-Buka_Aplikasi-59171b)](https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/frontend/)
 
-**Coba demo:** https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/
+**Coba demo:** https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/frontend/
 
 ## Deskripsi
 
@@ -21,7 +21,6 @@ Aplikasi web untuk mengelola akun kas kecil, pengajuan pengisian dana, persetuju
 
 ```text
 project/
-├── index.html            Root redirect → frontend/ (untuk GitHub Pages & file://)
 ├── frontend/
 │   ├── index.html        Halaman utama; login screen, workspace, dialog, toast
 │   ├── script.js         Logika aplikasi lengkap (autentikasi, state, render, RPC, ekspor)
@@ -35,7 +34,7 @@ project/
 └── Sistem Petty Cash KJA.pdf   Panduan penggunaan (PDF)
 ```
 
-File CSS lama `style.css` dan `style.clean.css` tidak dipakai lagi — tidak direferensi oleh `index.html`. Tetap disimpan di `frontend/` untuk referensi riwayat.
+File CSS lama `style.css` dan `style.clean.css` tidak dipakai lagi — tidak direferensi oleh `frontend/index.html`. Tetap disimpan di `frontend/` untuk referensi riwayat.
 
 ## Role Pengguna
 
@@ -155,7 +154,7 @@ Akun dibuat di Supabase Auth, kemudian profil ditambahkan secara manual ke tabel
 
 ### Opsi Cepat
 Buka demo langsung di browser (butuh internet dan akun yang dibuat oleh administrator sistem):
-**https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/**
+**https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/frontend/**
 
 ### Setup Sendiri (Self-Host)
 
@@ -185,7 +184,6 @@ Dapatkan nilainya dari **Project Settings → API** di dashboard Supabase.
 
 #### 4. Buka Aplikasi
 - Buka `frontend/index.html` langsung di browser (via `file://`), **atau**
-- Buka `index.html` di root — otomatis redirect ke `frontend/`, **atau**
 - Jalankan `node backend/app.js` di terminal, lalu buka `http://127.0.0.1:4173`.
 
 > Ekspor Excel/PDF membutuhkan koneksi internet karena pustaka dimuat dari CDN.
@@ -193,7 +191,7 @@ Dapatkan nilainya dari **Project Settings → API** di dashboard Supabase.
 #### 5. Deploy ke GitHub Pages
 1. Pastikan semua perubahan di-commit ke branch `main`.
 2. Di repo GitHub → **Settings → Pages** → pilih branch `main` dan folder `/ (root)`.
-3. Setiap commit berikutnya ke `main` akan otomatis memperbarui demo di `https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/`.
+3. Setiap commit berikutnya ke `main` akan otomatis memperbarui demo di `https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/frontend/`.
 
 ## Catatan untuk Pemilik Database
 
