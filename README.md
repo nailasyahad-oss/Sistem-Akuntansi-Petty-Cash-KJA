@@ -10,27 +10,32 @@ Aplikasi web untuk mengelola akun kas kecil, pengajuan pengisian dana, persetuju
 
 ## Teknologi
 
-- **Frontend:** HTML, CSS (`style.new.css`), dan JavaScript (`script.js`).
+- **Frontend:** HTML, CSS (`frontend/style.new.css`), dan JavaScript (`frontend/script.js`).
 - **Database & Auth:** Supabase PostgreSQL dan Supabase Auth (email/password).
 - **Akses data:** Supabase JavaScript client v2 dari browser, dengan kebijakan RLS.
 - **Ekspor (lazy-load via CDN):** SheetJS `xlsx@0.18.5` (Excel) dan `jspdf@2.5.1` + `jspdf-autotable@3.5.3` (PDF). Pustaka dimuat hanya ketika diekspor dan memerlukan koneksi internet.
 - **Hosting demo:** GitHub Pages dari branch `main` (root).
-- **Server lokal (opsional):** `app.js` — server statis sederhana berbasis modul `node:http`. Berguna bila ingin menghindari batasan `file://`, namun aplikasi juga dapat dibuka langsung via `file://`.
+- **Server lokal (opsional):** `backend/app.js` — server statis sederhana berbasis modul `node:http`. Berguna bila ingin menghindari batasan `file://`, namun aplikasi juga dapat dibuka langsung via `file://`.
 
 ## Struktur Project
 
 ```text
 project/
-├── index.html          Halaman utama; login screen, workspace, dialog, toast
-├── script.js           Logika aplikasi lengkap (autentikasi, state, render, RPC, ekspor)
-├── style.new.css       Gaya maroon-cream, responsif
-├── schema.sql          Skema database lengkap (tabel, trigger, fungsi, view, RLS, grant)
-├── app.js             Server statik Node.js (opsional, port 4173)
-├── README.md           Dokumentasi ini
+├── index.html            Root redirect → frontend/ (untuk GitHub Pages & file://)
+├── frontend/
+│   ├── index.html        Halaman utama; login screen, workspace, dialog, toast
+│   ├── script.js         Logika aplikasi lengkap (autentikasi, state, render, RPC, ekspor)
+│   ├── style.new.css     Gaya maroon-cream (tema aktif), responsif
+│   ├── style.css         CSS lama (unused, tidak direferensi)
+│   └── style.clean.css   CSS lama (unused, tidak direferensi)
+├── backend/
+│   ├── schema.sql        Skema database lengkap (tabel, trigger, fungsi, view, RLS, grant)
+│   └── app.js            Server statik Node.js (opsional, port 4173)
+├── README.md             Dokumentasi ini
 └── Sistem Petty Cash KJA.pdf   Panduan penggunaan (PDF)
 ```
 
-File lama `style.css` dan `style.clean.css` tidak dipakai lagi — tidak direferensi oleh `index.html`.
+File CSS lama `style.css` dan `style.clean.css` tidak dipakai lagi — tidak direferensi oleh `index.html`. Tetap disimpan di `frontend/` untuk referensi riwayat.
 
 ## Role Pengguna
 
@@ -88,7 +93,7 @@ Akun dibuat di Supabase Auth, kemudian profil ditambahkan secara manual ke tabel
 ### Login & Role
 - Autentikasi via Supabase Auth (email/password).
 - Role `ADMIN` atau `MANAGER` ditentukan oleh profil di `public.users`.
-- `app.js` tidak menyimpan kredensial; semua akses melalui `SUPABASE_URL` dan `SUPABASE_ANON_KEY` di `script.js`.
+- `backend/app.js` tidak menyimpan kredensial; semua akses melalui `SUPABASE_URL` dan `SUPABASE_ANON_KEY` di `frontend/script.js`.
 
 ### Dashboard
 - Metric grid: total saldo semua akun, pengajuan menunggu, kas masuk, kas keluar.
@@ -155,12 +160,12 @@ Buka demo langsung di browser (butuh internet dan akun yang dibuat oleh administ
 ### Setup Sendiri (Self-Host)
 
 #### 1. Setup Supabase
-1. Buat project di [supabase.com](https://supabase.com).
-2. Buka **SQL Editor** dan jalankan isi `schema.sql` (aman dijalankan ulang — memakai `IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP ... IF EXISTS`).
+1. Buat project di [supbase.com](https://supabase.com).
+2. Buka **SQL Editor** dan jalankan isi `backend/schema.sql` (aman dijalankan ulang — memakai `IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP ... IF EXISTS`).
 3. Pastikan semua tabel, fungsi, trigger, view, dan kebijakan RLS terpasang.
 
 #### 2. Konfigurasi
-Di `script.js`, ganti placeholder berikut:
+Di `frontend/script.js`, ganti placeholder berikut:
 ```js
 const SUPABASE_URL = 'SUPABASE_URL';
 const SUPABASE_ANON_KEY = 'SUPABASE_ANON_KEY';
@@ -179,8 +184,9 @@ Dapatkan nilainya dari **Project Settings → API** di dashboard Supabase.
 > Akun dan role dibuat oleh administrator sistem. README tidak berisi kredensial akses apa pun.
 
 #### 4. Buka Aplikasi
-- Buka `index.html` langsung di browser (via `file://`), **atau**
-- Jalankan `node app.js` di terminal, lalu buka `http://127.0.0.1:4173`.
+- Buka `frontend/index.html` langsung di browser (via `file://`), **atau**
+- Buka `index.html` di root — otomatis redirect ke `frontend/`, **atau**
+- Jalankan `node backend/app.js` di terminal, lalu buka `http://127.0.0.1:4173`.
 
 > Ekspor Excel/PDF membutuhkan koneksi internet karena pustaka dimuat dari CDN.
 
@@ -192,12 +198,12 @@ Dapatkan nilainya dari **Project Settings → API** di dashboard Supabase.
 ## Catatan untuk Pemilik Database
 
 ### Database demo online
-Demo di GitHub Pages terhubung ke project Supabase yang sama yang dikonfigurasi di `script.js`. **Jangan pernah menjalankan SQL percobaan, migrasi eksploratif, atau perubahan data di database yang sama yang dipakai demo online** — perubahan Anda akan langsung terlihat oleh pengguna demo.
+Demo di GitHub Pages terhubung ke project Supabase yang sama yang dikonfigurasi di `frontend/script.js`. **Jangan pernah menjalankan SQL percobaan, migrasi eksploratif, atau perubahan data di database yang sama yang dipakai demo online** — perubahan Anda akan langsung terlihat oleh pengguna demo.
 
 ### Menguplod perubahan skema
-- `schema.sql` dirancang **idempoten** — aman dijalankan berulang kali.
+- `backend/schema.sql` dirancang **idempoten** — aman dijalankan berulang kali.
 - Selalu **backup database** sebelum menambah kolom atau trigger baru.
-- Setelah menambah kolom (mis. Tahap 1 `min_balance`), jalankan kueri verifikasi di komentar `schema.sql` untuk memastikan saldo akun tidak berubah.
+  - Setelah menambah kolom (mis. Tahap 1 `min_balance`), jalankan kueri verifikasi di komentar `backend/schema.sql` untuk memastikan saldo akun tidak berubah.
 
 ### Membuka kembali periode tutup buku
 Aplikasi tidak menyediakan UI untuk membuka kembali periode yang sudah ditutup. Hanya melalui SQL langsung:
