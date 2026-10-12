@@ -1,5 +1,9 @@
 # Sistem Akuntansi Petty Cash KJA
 
+[![Demo](https://img.shields.io/badge/Demo-Buka_Aplikasi-59171b)](https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/)
+
+**Coba demo:** https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/
+
 ## Deskripsi
 
 Aplikasi web untuk mengelola akun kas kecil, pengajuan pengisian dana, persetujuan Manager, pencatatan transaksi kas keluar, kas opname, tutup buku bulanan, dan laporan. Data disimpan di Supabase PostgreSQL dan akses tabel dilindungi dengan Row Level Security (RLS).
@@ -10,6 +14,7 @@ Aplikasi web untuk mengelola akun kas kecil, pengajuan pengisian dana, persetuju
 - **Database & Auth:** Supabase PostgreSQL dan Supabase Auth (email/password).
 - **Akses data:** Supabase JavaScript client v2 dari browser, dengan kebijakan RLS.
 - **Ekspor (lazy-load via CDN):** SheetJS `xlsx@0.18.5` (Excel) dan `jspdf@2.5.1` + `jspdf-autotable@3.5.3` (PDF). Pustaka dimuat hanya ketika diekspor dan memerlukan koneksi internet.
+- **Hosting demo:** GitHub Pages dari branch `main` (root).
 - **Server lokal (opsional):** `app.js` — server statis sederhana berbasis modul `node:http`. Berguna bila ingin menghindari batasan `file://`, namun aplikasi juga dapat dibuka langsung via `file://`.
 
 ## Struktur Project
@@ -143,12 +148,18 @@ Akun dibuat di Supabase Auth, kemudian profil ditambahkan secara manual ke tabel
 
 ## Cara Menjalankan
 
-### 1. Setup Supabase
+### Opsi Cepat
+Buka demo langsung di browser (butuh internet dan akun yang dibuat oleh administrator sistem):
+**https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/**
+
+### Setup Sendiri (Self-Host)
+
+#### 1. Setup Supabase
 1. Buat project di [supabase.com](https://supabase.com).
 2. Buka **SQL Editor** dan jalankan isi `schema.sql` (aman dijalankan ulang — memakai `IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP ... IF EXISTS`).
 3. Pastikan semua tabel, fungsi, trigger, view, dan kebijakan RLS terpasang.
 
-### 2. Konfigurasi
+#### 2. Konfigurasi
 Di `script.js`, ganti placeholder berikut:
 ```js
 const SUPABASE_URL = 'SUPABASE_URL';
@@ -156,7 +167,7 @@ const SUPABASE_ANON_KEY = 'SUPABASE_ANON_KEY';
 ```
 Dapatkan nilainya dari **Project Settings → API** di dashboard Supabase.
 
-### 3. Buat Pengguna & Role
+#### 3. Buat Pengguna & Role
 1. Di **Authentication → Users**, buat akun (email/password).
 2. Di **SQL Editor**, masukkan profil:
    ```sql
@@ -165,13 +176,23 @@ Dapatkan nilainya dari **Project Settings → API** di dashboard Supabase.
    ```
 3. Ulangi untuk Manager dengan role `'MANAGER'`.
 
-### 4. Buka Aplikasi
+> Akun dan role dibuat oleh administrator sistem. README tidak berisi kredensial akses apa pun.
+
+#### 4. Buka Aplikasi
 - Buka `index.html` langsung di browser (via `file://`), **atau**
 - Jalankan `node app.js` di terminal, lalu buka `http://127.0.0.1:4173`.
 
 > Ekspor Excel/PDF membutuhkan koneksi internet karena pustaka dimuat dari CDN.
 
+#### 5. Deploy ke GitHub Pages
+1. Pastikan semua perubahan di-commit ke branch `main`.
+2. Di repo GitHub → **Settings → Pages** → pilih branch `main` dan folder `/ (root)`.
+3. Setiap commit berikutnya ke `main` akan otomatis memperbarui demo di `https://nailasyahad-oss.github.io/Sistem-Akuntansi-Petty-Cash-KJA/`.
+
 ## Catatan untuk Pemilik Database
+
+### Database demo online
+Demo di GitHub Pages terhubung ke project Supabase yang sama yang dikonfigurasi di `script.js`. **Jangan pernah menjalankan SQL percobaan, migrasi eksploratif, atau perubahan data di database yang sama yang dipakai demo online** — perubahan Anda akan langsung terlihat oleh pengguna demo.
 
 ### Menguplod perubahan skema
 - `schema.sql` dirancang **idempoten** — aman dijalankan berulang kali.
