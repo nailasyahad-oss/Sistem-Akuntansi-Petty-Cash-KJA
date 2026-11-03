@@ -724,7 +724,7 @@ function requestRows(list, compact = false) {
 }
 
 function transactionRows(list, compact = false) {
-  if (!list.length) return tableEmpty(compact ? 3 : 5, 'Belum ada transaksi', 'Transaksi kas kecil akan tampil di sini.');
+  if (!list.length) return tableEmpty(compact ? 3 : 7, 'Belum ada transaksi', 'Transaksi kas kecil akan tampil di sini.');
   return list.map((item) => {
     let journalLines = '';
     if (!compact) {
@@ -733,18 +733,20 @@ function transactionRows(list, compact = false) {
         const category = (state.categories || []).find((entry) => entry.id === item.category_id);
         const cashAccount = chart.find((entry) => entry.code === '1-1001');
         const bankAccount = chart.find((entry) => entry.code === '1-1002');
-        const expenseAccount = chart.find((entry) => entry.id === item.coa_id)
-          || chart.find((entry) => entry.id === category?.coa_id);
+        const expenseAccount = item.category_id
+          ? chart.find((entry) => entry.id === item.coa_id && entry.type === 'EXPENSE')
+            || chart.find((entry) => entry.id === category?.coa_id && entry.type === 'EXPENSE')
+          : null;
         const isCashIn = item.transaction_type === 'IN';
         const debit = isCashIn
           ? (cashAccount ? `${cashAccount.code} ${cashAccount.name}` : 'Kas Kecil')
-          : (expenseAccount ? `${expenseAccount.code} ${expenseAccount.name}` : 'Beban');
+          : (expenseAccount ? `${expenseAccount.code} ${expenseAccount.name}` : 'Beban Operasional');
         const credit = isCashIn
           ? (bankAccount ? `${bankAccount.code} ${bankAccount.name}` : 'Kas Bank')
-          : (cashAccount ? `${cashAccount.code} ${cashAccount.name}` : 'Kas Kecil');
+          : (expenseAccount && cashAccount ? `${cashAccount.code} ${cashAccount.name}` : 'Kas Kecil');
         journalLines = `<span class="cell-sub journal-entry-lines"><span>(D) ${escapeHtml(debit)}</span><br><span>(K) ${escapeHtml(credit)}</span></span>`;
       } catch {
-        journalLines = '<span class="cell-sub journal-entry-lines"><span>(D) Beban</span><br><span>(K) Kas Kecil</span></span>';
+        journalLines = '<span class="cell-sub journal-entry-lines"><span>(D) Beban Operasional</span><br><span>(K) Kas Kecil</span></span>';
       }
     }
     const isVoided = item.status === 'void';
@@ -756,7 +758,7 @@ function transactionRows(list, compact = false) {
         ? `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button>`
         : `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="void" data-entity="transaction" data-id="${item.id}">Batalkan</button>`
       : '—';
-    return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span>${journalLines}</td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge ${item.transaction_type === 'IN' ? 'badge-approved' : 'badge-pending'}">${transactionTypeLabel}</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
+    return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td class="journal-entry-cell">${journalLines}</td><td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge ${item.transaction_type === 'IN' ? 'badge-approved' : 'badge-pending'}">${transactionTypeLabel}</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
   }).join('');
 }
 
@@ -810,7 +812,7 @@ function transactionsMarkup() {
   const addButton = isAdmin() ? '<button class="button button-primary" data-action="new" data-entity="transaction">＋ Catat transaksi</button>' : '';
   const categoryManager = isAdmin() ? `<section class="panel category-panel"><div class="panel-heading"><div><h3>Kategori pengeluaran</h3><p>${state.categories.filter((category) => category.is_active).length} kategori aktif</p></div><button class="small-action" data-action="add-category">+ Tambah kategori</button></div><div class="category-list">${state.categories.map((category) => `<span class="category-pill ${category.is_active ? '' : 'inactive'}">${escapeHtml(category.name)}<button type="button" data-action="toggle-category" data-id="${category.id}" data-active="${category.is_active}">${category.is_active ? 'Nonaktifkan' : 'Aktifkan'}</button></span>`).join('')}</div></section>` : '';
   return `<div class="toolbar"><h2>Riwayat transaksi <span class="cell-sub">${filteredTransactions().length} data</span></h2><div class="toolbar-controls"><input class="search-field" data-search placeholder="Cari pengeluaran atau akun..." value="${escapeHtml(state.search)}" aria-label="Cari transaksi"><label class="void-filter"><input type="checkbox" data-show-void ${state.showVoided ? 'checked' : ''}> Tampilkan yang dibatalkan</label>${addButton}</div></div>${categoryManager}
-    <section class="panel"><div class="table-wrap"><table><thead><tr><th>Uraian</th><th>Akun kas</th><th>Jenis</th><th>Kategori</th><th>Nominal</th><th>Tindakan</th></tr></thead><tbody>${transactionRows(filteredTransactions())}</tbody></table></div></section>`;
+    <section class="panel"><div class="table-wrap"><table class="transactions-table"><thead><tr><th>Uraian</th><th>Jurnal</th><th>Akun kas</th><th>Jenis</th><th>Kategori</th><th>Nominal</th><th>Tindakan</th></tr></thead><tbody>${transactionRows(filteredTransactions())}</tbody></table></div></section>`;
 }
 
 function accountsMarkup() {
