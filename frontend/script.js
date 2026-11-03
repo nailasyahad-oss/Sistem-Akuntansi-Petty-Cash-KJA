@@ -9,6 +9,7 @@ const state = {
   profile: null,
   view: 'dashboard',
   accounts: [],
+  chartOfAccounts: [],
   categories: [],
   requests: [],
    transactions: [],
@@ -831,7 +832,10 @@ function requestForm(item = {}) {
 function transactionForm(item = {}) {
   const activeAccounts = state.accounts.filter((account) => account.is_active);
   const accountOptions = activeAccounts.map((account) => `<option value="${account.id}" ${item.account_id === account.id ? 'selected' : ''}>${escapeHtml(account.name)} (${money(accountBalance(account.id))})</option>`).join('');
-  const activeCategories = state.categories.filter((category) => category.is_active);
+  const activeCategories = state.categories.filter((category) => category.is_active && (
+    !state.chartOfAccounts.length
+    || state.chartOfAccounts.some((coa) => coa.id === category.coa_id && coa.is_active)
+  ));
   const categoryOptions = activeCategories.map((category) => `<option value="${category.id}" ${item.category_id === category.id ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('');
   const categoryField = state.categories.length
     ? `<label for="field-category_id">Kategori pengeluaran</label><select id="field-category_id" name="category_id" ${!item.id ? 'required' : ''}><option value="">${item.id ? 'Tanpa kategori' : 'Pilih kategori'}</option>${categoryOptions}</select>`

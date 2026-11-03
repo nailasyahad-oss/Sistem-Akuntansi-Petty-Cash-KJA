@@ -1,6 +1,7 @@
 -- Supabase PostgreSQL schema for Sistem Akuntansi Petty Cash KJA.
--- The only application tables are users, petty_cash_accounts,
--- petty_cash_requests, and petty_cash_transactions.
+-- Core tables include users, petty_cash_accounts, petty_cash_requests,
+-- petty_cash_transactions, expense_categories, cash_counts, monthly_closings,
+-- chart_of_accounts, journal_entries, and journal_details.
 
 create table if not exists public.users (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -8,6 +9,19 @@ create table if not exists public.users (
   role text not null check (role in ('ADMIN', 'MANAGER')),
   created_at timestamptz not null default now()
 );
+
+create or replace function public.current_app_role()
+returns text
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select role from public.users where id = auth.uid()
+$$;
+
+revoke all on function public.current_app_role() from public, anon;
+grant execute on function public.current_app_role() to authenticated;
 
 create table if not exists public.petty_cash_accounts (
   id uuid primary key default gen_random_uuid(),
@@ -20,6 +34,26 @@ create table if not exists public.petty_cash_accounts (
   updated_at timestamptz not null default now()
 );
 
+-- [FITUR BARU] Tahap 1: Chart of Accounts standar KJA.
+create table if not exists public.chart_of_accounts (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  name text not null,
+  type text not null check (type in ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.chart_of_accounts (code, name, type)
+values
+  ('1-1001', 'Kas Kecil', 'ASSET'),
+  ('1-1002', 'Kas Bank', 'ASSET'),
+  ('5-1001', 'Beban Perlengkapan', 'EXPENSE'),
+  ('5-1002', 'Beban Transportasi', 'EXPENSE'),
+  ('5-1003', 'Beban Operasional Lainnya', 'EXPENSE'),
+  ('5-1004', 'Selisih Kas Kecil', 'EXPENSE')
+on conflict (code) do nothing;
+
 -- [FITUR BARU] Tahap 1: batas saldo minimum akun kas.
 -- Addition is safe for populated databases: existing rows receive DEFAULT 0,
 -- and no account, request, or transaction data is changed.
@@ -31,6 +65,7 @@ alter table public.petty_cash_accounts
 -- Verify before applying this block in the Supabase SQL Editor, then run the
 -- block again after the schema is applied to confirm idempotency.
 -- Query sebelum: bandingkan hasil saldo_kas untuk setiap akun.
+/*
 select
   a.id as account_id,
   a.name as nama_akun,
@@ -47,10 +82,12 @@ select
     ), 0) as saldo_kas
 from public.petty_cash_accounts a
 order by a.name;
+*/
 
 -- Query sesudah: hasil account_id, nama_akun, dan saldo_kas harus identik
 -- dengan hasil sebelum perubahan (kolom min_balance tidak mengubah saldo).
 -- Lakukan query ini setelah mengeksekusi bagian "Tahap 1" di schema.sql.
+/*
 select
   a.id as account_id,
   a.name as nama_akun,
@@ -67,6 +104,7 @@ select
     ), 0) as saldo_kas
 from public.petty_cash_accounts a
 order by a.name;
+*/
 
 create table if not exists public.petty_cash_requests (
   id uuid primary key default gen_random_uuid(),
@@ -107,23 +145,61 @@ create table if not exists public.expense_categories (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   coa_code text,
+  coa_id uuid references public.chart_of_accounts (id),
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.expense_categories
+  add column if not exists coa_id uuid references public.chart_of_accounts (id);
 
 alter table public.petty_cash_transactions
   add column if not exists category_id uuid
     references public.expense_categories(id);
 
-insert into public.expense_categories (name, coa_code, is_active)
+alter table public.petty_cash_transactions
+  add column if not exists coa_id uuid
+    references public.chart_of_accounts (id);
+
+insert into public.expense_categories (name, coa_code, coa_id, is_active)
 values
-  ('ATK', 'ATK', true),
-  ('Transportasi', 'TRANSPORTASI', true),
-  ('Konsumsi', 'KONSUMSI', true),
-  ('Listrik & Air', 'LISTRIK_AIR', true),
-  ('Kebersihan', 'KEBERSIHAN', true),
-  ('Lain-lain', 'LAIN', true)
+  ('ATK', 'ATK', (select id from public.chart_of_accounts where code = '5-1001'), true),
+  ('Transportasi', 'TRANSPORTASI', (select id from public.chart_of_accounts where code = '5-1002'), true),
+  ('Konsumsi', 'KONSUMSI', (select id from public.chart_of_accounts where code = '5-1003'), true),
+  ('Listrik & Air', 'LISTRIK_AIR', (select id from public.chart_of_accounts where code = '5-1003'), true),
+  ('Kebersihan', 'KEBERSIHAN', (select id from public.chart_of_accounts where code = '5-1003'), true),
+  ('Lain-lain', 'LAIN', (select id from public.chart_of_accounts where code = '5-1003'), true)
 on conflict (name) do nothing;
+
+update public.expense_categories as category
+set coa_id = coa.id
+from (values
+  ('ATK', '5-1001'),
+  ('Transportasi', '5-1002'),
+  ('Konsumsi', '5-1003'),
+  ('Listrik & Air', '5-1003'),
+  ('Kebersihan', '5-1003'),
+  ('Lain-lain', '5-1003')
+) as mapping(category_name, coa_code)
+join public.chart_of_accounts as coa on coa.code = mapping.coa_code
+where category.name = mapping.category_name
+  and category.coa_id is null;
+
+alter table public.chart_of_accounts enable row level security;
+drop policy if exists chart_of_accounts_read_authenticated on public.chart_of_accounts;
+drop policy if exists chart_of_accounts_insert_admin on public.chart_of_accounts;
+drop policy if exists chart_of_accounts_update_admin on public.chart_of_accounts;
+create policy chart_of_accounts_read_authenticated
+  on public.chart_of_accounts for select to authenticated
+  using (public.current_app_role() in ('ADMIN', 'MANAGER'));
+create policy chart_of_accounts_insert_admin
+  on public.chart_of_accounts for insert to authenticated
+  with check (public.current_app_role() = 'ADMIN');
+create policy chart_of_accounts_update_admin
+  on public.chart_of_accounts for update to authenticated
+  using (public.current_app_role() = 'ADMIN')
+  with check (public.current_app_role() = 'ADMIN');
+grant select, insert, update on public.chart_of_accounts to authenticated;
 
 alter table public.expense_categories enable row level security;
 
@@ -231,19 +307,7 @@ create trigger petty_cash_accounts_protect_opening_balance
 before insert or update on public.petty_cash_accounts
 for each row execute function public.protect_petty_cash_opening_balance();
 
--- SECURITY DEFINER avoids recursive users-table RLS checks in policies.
-create or replace function public.current_app_role()
-returns text
-language sql
-stable
-security definer
-set search_path = pg_catalog, public
-as $$
-  select role from public.users where id = auth.uid()
-$$;
-
-revoke all on function public.current_app_role() from public, anon;
-grant execute on function public.current_app_role() to authenticated;
+-- current_app_role() is defined before policies that reference it.
 
 -- Approval is a single atomic operation; managers cannot edit request amounts
 -- or assign themselves through a general-purpose table update.
@@ -777,6 +841,303 @@ for each row execute function public.protect_petty_cash_manager_account_update()
 -- Verifikasi saldo setelah Tahap 1; hasil harus identik sebelum dan sesudah
 -- perubahan karena min_balance tidak masuk ke dalam perhitungan saldo.
 -- Jalankan di Supabase SQL Editor; query ini hanya membaca data.
+-- select
+--   a.id as account_id,
+--   a.name as nama_akun,
+--   coalesce(a.initial_balance, 0)
+--     + coalesce((
+--       select sum(r.requested_amount)
+--       from public.petty_cash_requests r
+--       where r.account_id = a.id and r.status = 'approved'
+--     ), 0)
+--     - coalesce((
+--       select sum(t.amount)
+--       from public.petty_cash_transactions t
+--       where t.account_id = a.id
+--         and t.transaction_type = 'OUT'
+--         and t.status = 'posted'
+--     ), 0) as saldo_kas
+-- from public.petty_cash_accounts a
+-- order by a.name;
+
+-- [FITUR BARU] Tahap 1: CoA dan auto-journaling append-only.
+create table if not exists public.journal_entries (
+  id uuid primary key default gen_random_uuid(),
+  source_type text not null,
+  source_id uuid not null,
+  source_sequence bigint not null default 0,
+  entry_date date not null,
+  description text not null,
+  created_by uuid references public.users (id),
+  created_at timestamptz not null default now(),
+  unique (source_type, source_id, source_sequence)
+);
+
+create table if not exists public.journal_details (
+  id uuid primary key default gen_random_uuid(),
+  journal_entry_id uuid not null references public.journal_entries (id),
+  line_number integer not null check (line_number > 0),
+  coa_id uuid not null references public.chart_of_accounts (id),
+  debit numeric(14, 2) not null default 0 check (debit >= 0),
+  credit numeric(14, 2) not null default 0 check (credit >= 0),
+  created_at timestamptz not null default now(),
+  check ((debit > 0 and credit = 0) or (credit > 0 and debit = 0)),
+  unique (journal_entry_id, line_number)
+);
+
+create index if not exists journal_details_coa_idx
+  on public.journal_details (coa_id, journal_entry_id);
+create index if not exists journal_entries_date_idx
+  on public.journal_entries (entry_date desc);
+
+alter table public.journal_entries enable row level security;
+alter table public.journal_details enable row level security;
+drop policy if exists journal_entries_read_authenticated on public.journal_entries;
+drop policy if exists journal_details_read_authenticated on public.journal_details;
+create policy journal_entries_read_authenticated
+  on public.journal_entries for select to authenticated
+  using (public.current_app_role() in ('ADMIN', 'MANAGER'));
+create policy journal_details_read_authenticated
+  on public.journal_details for select to authenticated
+  using (public.current_app_role() in ('ADMIN', 'MANAGER'));
+revoke all on public.journal_entries, public.journal_details from public, anon, authenticated;
+grant select on public.journal_entries, public.journal_details to authenticated;
+
+create or replace function public.append_cash_journal(
+  p_source_type text,
+  p_source_id uuid,
+  p_source_sequence bigint,
+  p_entry_date date,
+  p_description text,
+  p_created_by uuid,
+  p_debit_coa uuid,
+  p_credit_coa uuid,
+  p_amount numeric
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  entry_id uuid;
+begin
+  if p_amount <= 0 or p_debit_coa is null or p_credit_coa is null then
+    raise exception 'Jurnal tidak valid: akun debit, kredit, dan nominal wajib tersedia';
+  end if;
+
+  insert into public.journal_entries (
+    source_type, source_id, source_sequence, entry_date, description, created_by
+  ) values (
+    p_source_type, p_source_id, p_source_sequence, p_entry_date, p_description, p_created_by
+  )
+  on conflict (source_type, source_id, source_sequence) do nothing;
+
+  select id into entry_id
+  from public.journal_entries
+  where source_type = p_source_type
+    and source_id = p_source_id
+    and source_sequence = p_source_sequence;
+
+  insert into public.journal_details (journal_entry_id, line_number, coa_id, debit, credit)
+  values (entry_id, 1, p_debit_coa, p_amount, 0)
+  on conflict (journal_entry_id, line_number) do nothing;
+  insert into public.journal_details (journal_entry_id, line_number, coa_id, debit, credit)
+  values (entry_id, 2, p_credit_coa, 0, p_amount)
+  on conflict (journal_entry_id, line_number) do nothing;
+
+  return entry_id;
+end;
+$$;
+
+revoke all on function public.append_cash_journal(text, uuid, bigint, date, text, uuid, uuid, uuid, numeric)
+  from public, anon, authenticated;
+
+create or replace function public.assign_petty_cash_transaction_coa()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if new.transaction_type is distinct from 'OUT' then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.category_id is null then
+      raise exception 'Pilih kategori pengeluaran sebelum mencatat transaksi';
+    end if;
+  elsif new.category_id is distinct from old.category_id then
+    if new.category_id is null then
+      raise exception 'Pilih kategori pengeluaran sebelum mencatat transaksi';
+    end if;
+  else
+    return new;
+  end if;
+
+  select category.coa_id
+  into new.coa_id
+  from public.expense_categories as category
+  join public.chart_of_accounts as coa on coa.id = category.coa_id
+  where category.id = new.category_id
+    and category.is_active
+    and coa.is_active;
+
+  if new.coa_id is null then
+    raise exception 'Kategori tidak aktif atau akun CoA belum dipetakan atau tidak aktif';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_transactions_assign_coa on public.petty_cash_transactions;
+create trigger petty_cash_transactions_assign_coa
+before insert or update on public.petty_cash_transactions
+for each row execute function public.assign_petty_cash_transaction_coa();
+
+create or replace function public.journal_approved_petty_cash_request()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  petty_cash_coa uuid;
+  bank_coa uuid;
+begin
+  if new.status <> 'approved' then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if old.status = 'approved' then
+      return new;
+    end if;
+  end if;
+
+  select id into petty_cash_coa from public.chart_of_accounts where code = '1-1001';
+  select id into bank_coa from public.chart_of_accounts where code = '1-1002';
+  if petty_cash_coa is null or bank_coa is null then
+    raise exception 'CoA Kas Kecil atau Kas Bank belum tersedia';
+  end if;
+
+  perform public.append_cash_journal(
+    'REQUEST_APPROVED', new.id, 0,
+    coalesce(new.reviewed_at::date, new.created_at::date),
+    'Pengisian kas kecil: ' || new.purpose,
+    coalesce(new.reviewed_by, new.requester_id),
+    petty_cash_coa, bank_coa, new.requested_amount
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_requests_journal_approved on public.petty_cash_requests;
+create trigger petty_cash_requests_journal_approved
+after insert or update on public.petty_cash_requests
+for each row execute function public.journal_approved_petty_cash_request();
+
+create or replace function public.journal_petty_cash_transaction()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  petty_cash_coa uuid;
+  expense_coa uuid;
+  old_expense_coa uuid;
+  event_sequence bigint;
+begin
+  if new.transaction_type is distinct from 'OUT' then
+    return new;
+  end if;
+
+  select id into petty_cash_coa from public.chart_of_accounts where code = '1-1001';
+  if petty_cash_coa is null then
+    raise exception 'CoA Kas Kecil belum tersedia';
+  end if;
+
+  select id into expense_coa from public.chart_of_accounts where code = '5-1003';
+  expense_coa := coalesce(new.coa_id, expense_coa);
+  if tg_op = 'INSERT' then
+    if new.status = 'posted' then
+      perform public.append_cash_journal(
+        'PETTY_CASH_OUT', new.id, 0, new.transaction_date,
+        'Pengeluaran kas kecil: ' || new.description, new.created_by,
+        expense_coa, petty_cash_coa, new.amount
+      );
+    end if;
+    return new;
+  end if;
+
+  select category.coa_id
+  into old_expense_coa
+  from public.expense_categories as category
+  where category.id = old.category_id;
+  select id into expense_coa from public.chart_of_accounts where code = '5-1003';
+  old_expense_coa := coalesce(old.coa_id, old_expense_coa, expense_coa);
+  expense_coa := coalesce(new.coa_id, expense_coa);
+  event_sequence := floor(extract(epoch from coalesce(new.updated_at, now())) * 1000000)::bigint;
+
+  if old.status = 'posted' and new.status = 'void' then
+    perform public.append_cash_journal(
+      'PETTY_CASH_OUT', old.id, 0, old.transaction_date,
+      'Pengeluaran kas kecil: ' || old.description, old.created_by,
+      old_expense_coa, petty_cash_coa, old.amount
+    );
+    perform public.append_cash_journal(
+      'PETTY_CASH_VOID', new.id, event_sequence,
+      coalesce(new.voided_at::date, current_date),
+      'Pembatalan transaksi kas kecil: ' || old.description,
+      coalesce(new.voided_by, new.created_by),
+      petty_cash_coa, old_expense_coa, old.amount
+    );
+  elsif old.status = 'posted' and new.status = 'posted' and (
+    old.account_id is distinct from new.account_id
+    or old.category_id is distinct from new.category_id
+    or old.coa_id is distinct from new.coa_id
+    or old.transaction_date is distinct from new.transaction_date
+    or old.description is distinct from new.description
+    or old.amount is distinct from new.amount
+  ) then
+    perform public.append_cash_journal(
+      'PETTY_CASH_OUT', old.id, 0, old.transaction_date,
+      'Pengeluaran kas kecil: ' || old.description, old.created_by,
+      old_expense_coa, petty_cash_coa, old.amount
+    );
+    perform public.append_cash_journal(
+      'PETTY_CASH_EDIT_REVERSAL', new.id, event_sequence,
+      coalesce(new.updated_at::date, current_date),
+      'Pembalikan perubahan transaksi: ' || old.description, new.created_by,
+      petty_cash_coa, old_expense_coa, old.amount
+    );
+    perform public.append_cash_journal(
+      'PETTY_CASH_EDIT_POSTING', new.id, event_sequence,
+      new.transaction_date, 'Perubahan transaksi kas kecil: ' || new.description,
+      new.created_by, expense_coa, petty_cash_coa, new.amount
+    );
+  elsif old.status = 'void' and new.status = 'posted' then
+    perform public.append_cash_journal(
+      'PETTY_CASH_REPOST', new.id, event_sequence, new.transaction_date,
+      'Pencatatan kembali transaksi kas kecil: ' || new.description,
+      new.created_by, expense_coa, petty_cash_coa, new.amount
+    );
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_transactions_journal on public.petty_cash_transactions;
+create trigger petty_cash_transactions_journal
+after insert or update on public.petty_cash_transactions
+for each row execute function public.journal_petty_cash_transaction();
+
+-- Verifikasi Tahap 1: jalankan query ini sebelum dan sesudah schema diterapkan.
+-- Simpan hasil per account_id; saldo_kas harus identik karena penambahan CoA
+-- dan jurnal tidak mengubah saldo kas sumber.
 -- select
 --   a.id as account_id,
 --   a.name as nama_akun,
