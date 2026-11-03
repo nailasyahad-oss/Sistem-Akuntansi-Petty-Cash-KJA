@@ -13,6 +13,7 @@
   <script src="script.js?v=20261103-3" defer></script>
   <script src="account-minimum.js?v=20261103-1" defer></script>
   <script src="coa-journal.js?v=20261103-2" defer></script>
+  <script src="void-transaction.js?v=20261103-1" defer></script>
 </head>
 <body>
   <main id="app" aria-live="polite">
@@ -68,6 +69,16 @@
         <div class="dialog-heading"><div><p class="eyebrow" id="dialog-kicker">DATA</p><h2 id="dialog-title">Tambah data</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Tutup">×</button></div>
         <div id="record-fields" class="dialog-fields"></div>
         <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Batal</button><button class="button button-primary" id="save-record" type="submit">Simpan</button></div>
+      </form>
+    </dialog>
+    <dialog id="void-dialog" class="record-dialog void-dialog">
+      <form id="void-form">
+        <div class="dialog-heading"><div><p class="eyebrow">KOREKSI TRANSAKSI</p><h2>Batalkan transaksi</h2></div><button class="icon-button" type="button" data-void-close aria-label="Tutup">×</button></div>
+        <p id="void-transaction-summary" class="cell-sub"></p>
+        <label for="void-reason">Alasan pembatalan</label>
+        <textarea id="void-reason" name="reason" minlength="5" maxlength="240" required placeholder="Tuliskan alasan minimal 5 karakter"></textarea>
+        <p class="cell-sub">Transaksi yang dibatalkan tetap tersimpan sebagai jejak audit.</p>
+        <div class="dialog-actions"><button class="button button-quiet" type="button" data-void-close>Batal</button><button id="void-submit" class="button button-danger" type="submit">Batalkan transaksi</button></div>
       </form>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite">

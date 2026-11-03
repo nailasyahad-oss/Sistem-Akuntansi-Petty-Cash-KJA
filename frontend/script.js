@@ -755,7 +755,7 @@ function transactionRows(list, compact = false) {
     const rowClass = isVoided ? 'voided' : '';
     const actions = isAdmin()
       ? isVoided
-        ? `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button>`
+        ? '—'
         : `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="void" data-entity="transaction" data-id="${item.id}">Batalkan</button>`
       : '—';
     return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td class="journal-entry-cell">${journalLines}</td><td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge ${item.transaction_type === 'IN' ? 'badge-approved' : 'badge-pending'}">${transactionTypeLabel}</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;

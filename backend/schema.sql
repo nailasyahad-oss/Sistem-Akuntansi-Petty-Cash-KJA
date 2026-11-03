@@ -726,15 +726,13 @@ create policy transactions_update_admin
   on public.petty_cash_transactions for update to authenticated
   using (public.current_app_role() = 'ADMIN')
   with check (public.current_app_role() = 'ADMIN' and created_by = auth.uid());
-create policy transactions_delete_admin
-  on public.petty_cash_transactions for delete to authenticated
-  using (public.current_app_role() = 'ADMIN');
 
 grant usage on schema public to authenticated;
 grant select on public.users to authenticated;
 grant select, insert, update, delete on public.petty_cash_accounts to authenticated;
 grant select, insert, update, delete on public.petty_cash_requests to authenticated;
-grant select, insert, update, delete on public.petty_cash_transactions to authenticated;
+revoke delete on public.petty_cash_transactions from authenticated;
+grant select, insert, update on public.petty_cash_transactions to authenticated;
 
 -- [FITUR BARU] Tahap 7: views untuk laporan dan ekspor.
 -- Views menggunakan security_invoker (default) sehingga RLS pada tabel dasar
@@ -1147,6 +1145,49 @@ drop trigger if exists petty_cash_transactions_journal on public.petty_cash_tran
 create trigger petty_cash_transactions_journal
 after insert or update on public.petty_cash_transactions
 for each row execute function public.journal_petty_cash_transaction();
+
+-- [FITUR BARU] Tahap 4: nominal transaksi immutable; koreksi memakai VOID.
+create or replace function public.protect_petty_cash_transaction_immutability()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'Transaksi tidak boleh dihapus. Gunakan pembatalan transaksi.'
+      using errcode = '42501';
+  end if;
+
+  if old.status = 'void' then
+    raise exception 'Transaksi yang sudah dibatalkan tidak dapat diubah atau dipulihkan.'
+      using errcode = '42501';
+  end if;
+
+  if new.amount is distinct from old.amount then
+    raise exception 'Nominal transaksi tidak boleh diubah. Batalkan transaksi dan catat koreksi baru.'
+      using errcode = '42501';
+  end if;
+
+  if old.status = 'posted' and new.status = 'void' and (
+    public.current_app_role() <> 'ADMIN'
+    or nullif(btrim(new.void_reason), '') is null
+    or length(btrim(new.void_reason)) < 5
+    or new.voided_by is distinct from auth.uid()
+    or new.voided_at is null
+  ) then
+    raise exception 'Pembatalan memerlukan Admin, alasan minimal 5 karakter, pencatat, dan waktu.'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_transactions_protect_immutability on public.petty_cash_transactions;
+create trigger petty_cash_transactions_protect_immutability
+before update or delete on public.petty_cash_transactions
+for each row execute function public.protect_petty_cash_transaction_immutability();
 
 -- Verifikasi Tahap 1: jalankan query ini sebelum dan sesudah schema diterapkan.
 -- Simpan hasil per account_id; saldo_kas harus identik karena penambahan CoA
