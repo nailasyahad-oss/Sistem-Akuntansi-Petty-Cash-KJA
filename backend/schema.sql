@@ -722,17 +722,13 @@ create policy transactions_read_authenticated
 create policy transactions_insert_admin
   on public.petty_cash_transactions for insert to authenticated
   with check (public.current_app_role() = 'ADMIN' and created_by = auth.uid());
-create policy transactions_update_admin
-  on public.petty_cash_transactions for update to authenticated
-  using (public.current_app_role() = 'ADMIN')
-  with check (public.current_app_role() = 'ADMIN' and created_by = auth.uid());
 
 grant usage on schema public to authenticated;
 grant select on public.users to authenticated;
 grant select, insert, update, delete on public.petty_cash_accounts to authenticated;
 grant select, insert, update, delete on public.petty_cash_requests to authenticated;
-revoke delete on public.petty_cash_transactions from authenticated;
-grant select, insert, update on public.petty_cash_transactions to authenticated;
+revoke update, delete on public.petty_cash_transactions from authenticated;
+grant select, insert on public.petty_cash_transactions to authenticated;
 
 -- [FITUR BARU] Tahap 7: views untuk laporan dan ekspor.
 -- Views menggunakan security_invoker (default) sehingga RLS pada tabel dasar

@@ -756,7 +756,7 @@ function transactionRows(list, compact = false) {
     const actions = isAdmin()
       ? isVoided
         ? '—'
-        : `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="void" data-entity="transaction" data-id="${item.id}">Batalkan</button>`
+        : `<button class="small-action danger" data-action="void" data-entity="transaction" data-id="${item.id}">Batalkan</button>`
       : '—';
     return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td class="journal-entry-cell">${journalLines}</td><td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge ${item.transaction_type === 'IN' ? 'badge-approved' : 'badge-pending'}">${transactionTypeLabel}</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
   }).join('');
@@ -853,18 +853,18 @@ function requestForm(item = {}) {
   return `<label for="field-account_id">Akun kas kecil</label><select id="field-account_id" name="account_id" required><option value="">Pilih akun tujuan</option>${accountOptions}</select>${field('Keperluan pengisian', 'purpose', item.purpose, 'text', true, 'maxlength="180" placeholder="Contoh: pengisian awal atau replenishment"')}<label for="field-requested_amount">Nominal pengisian (Rp)</label><input id="field-requested_amount" name="requested_amount" type="number" min="1" step="1" value="${escapeHtml(item.requested_amount ?? '')}" required><p class="cell-sub">Saldo bertambah hanya setelah manager menyetujui pengajuan.</p>`;
 }
 
-function transactionForm(item = {}) {
+function transactionForm() {
   const activeAccounts = state.accounts.filter((account) => account.is_active);
-  const accountOptions = activeAccounts.map((account) => `<option value="${account.id}" ${item.account_id === account.id ? 'selected' : ''}>${escapeHtml(account.name)} (${money(accountBalance(account.id))})</option>`).join('');
+  const accountOptions = activeAccounts.map((account) => `<option value="${account.id}">${escapeHtml(account.name)} (${money(accountBalance(account.id))})</option>`).join('');
   const activeCategories = state.categories.filter((category) => category.is_active && (
     !state.chartOfAccounts.length
     || state.chartOfAccounts.some((coa) => coa.id === category.coa_id && coa.is_active)
   ));
-  const categoryOptions = activeCategories.map((category) => `<option value="${category.id}" ${item.category_id === category.id ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('');
+  const categoryOptions = activeCategories.map((category) => `<option value="${category.id}">${escapeHtml(category.name)}</option>`).join('');
   const categoryField = state.categories.length
-    ? `<label for="field-category_id">Kategori pengeluaran</label><select id="field-category_id" name="category_id" ${!item.id ? 'required' : ''}><option value="">${item.id ? 'Tanpa kategori' : 'Pilih kategori'}</option>${categoryOptions}</select>`
+    ? `<label for="field-category_id">Kategori pengeluaran</label><select id="field-category_id" name="category_id" required><option value="">Pilih kategori</option>${categoryOptions}</select>`
     : '<p class="cell-sub">Kategori belum tersedia. Jalankan blok kategori pada schema SQL terlebih dahulu.</p>';
-  return `<label for="field-account_id">Akun kas kecil</label><select id="field-account_id" name="account_id" required><option value="">Pilih akun</option>${accountOptions}</select>${field('Tanggal transaksi', 'transaction_date', item.transaction_date || new Date().toISOString().slice(0, 10), 'date')}${categoryField}<label for="field-description">Uraian pengeluaran</label><textarea id="field-description" name="description" maxlength="240" required placeholder="Contoh: pembelian ATK">${escapeHtml(item.description || '')}</textarea><label for="field-amount">Nominal pengeluaran (Rp)</label><input id="field-amount" name="amount" type="number" min="1" step="1" value="${escapeHtml(item.amount ?? '')}" required><p id="field-amount-error" class="inline-field-error" aria-live="polite"></p><p class="cell-sub">Pengisian saldo dilakukan melalui pengajuan dan persetujuan manager.</p>`;
+  return `<label for="field-account_id">Akun kas kecil</label><select id="field-account_id" name="account_id" required><option value="">Pilih akun</option>${accountOptions}</select>${field('Tanggal transaksi', 'transaction_date', new Date().toISOString().slice(0, 10), 'date')}${categoryField}<label for="field-description">Uraian pengeluaran</label><textarea id="field-description" name="description" maxlength="240" required placeholder="Contoh: pembelian ATK"></textarea><label for="field-amount">Nominal pengeluaran (Rp)</label><input id="field-amount" name="amount" type="number" min="1" step="1" required><p id="field-amount-error" class="inline-field-error" aria-live="polite"></p><p class="cell-sub">Pengisian saldo dilakukan melalui pengajuan dan persetujuan manager.</p>`;
 }
 
 function accountForm(item = {}) {
@@ -940,6 +940,7 @@ function monthlyClosingForm(item = {}) {
 
 function openEditor(entity, item = null) {
   if (!isAdmin()) return;
+  if (entity === 'transaction' && item) return notify('Transaksi yang sudah dicatat tidak dapat diubah. Gunakan Batalkan untuk koreksi.', 'error');
   if (entity === 'request' && !state.accounts.some((account) => account.is_active)) return notify('Tambahkan akun kas aktif sebelum membuat pengajuan.', 'error');
   if (entity === 'transaction' && !state.accounts.some((account) => account.is_active)) return notify('Tambahkan akun kas aktif sebelum mencatat transaksi.', 'error');
   if (entity === 'cash-count' && !state.accounts.some((account) => account.is_active)) return notify('Tambahkan akun kas aktif sebelum mencatat kas opname.', 'error');
@@ -948,7 +949,7 @@ function openEditor(entity, item = null) {
   const names = { request: 'pengajuan', transaction: 'transaksi', account: 'akun kas', 'cash-count': 'kas opname', closing: 'tutup buku' };
   $('#dialog-kicker').textContent = item ? 'UBAH DATA' : 'DATA BARU';
   $('#dialog-title').textContent = `${item ? 'Ubah' : 'Tambah'} ${names[entity]}`;
-  $('#record-fields').innerHTML = entity === 'request' ? requestForm(item || {}) : entity === 'transaction' ? transactionForm(item || {}) : entity === 'cash-count' ? cashCountForm() : entity === 'closing' ? monthlyClosingForm(item || {}) : accountForm(item || {});
+  $('#record-fields').innerHTML = entity === 'request' ? requestForm(item || {}) : entity === 'transaction' ? transactionForm() : entity === 'cash-count' ? cashCountForm() : entity === 'closing' ? monthlyClosingForm(item || {}) : accountForm(item || {});
   $('#record-form').dataset.entity = entity;
   $('#record-dialog').showModal();
   if (entity === 'cash-count') updateCashCountDifference();
@@ -959,6 +960,10 @@ async function saveRecord(event) {
   event.preventDefault();
   if (!state.editing) return;
   const { entity, id } = state.editing;
+  if (entity === 'transaction' && id) {
+    notify('Transaksi yang sudah dicatat tidak dapat diubah. Gunakan Batalkan untuk koreksi.', 'error');
+    return;
+  }
   const formData = new FormData(event.currentTarget);
   const values = Object.fromEntries(formData.entries());
   let table;
@@ -1055,7 +1060,6 @@ async function saveRecord(event) {
 async function deleteRecord(entity, id) {
   const config = {
     request: { table: 'petty_cash_requests', label: 'pengajuan' },
-    transaction: { table: 'petty_cash_transactions', label: 'transaksi' },
     account: { table: 'petty_cash_accounts', label: 'akun kas' }
   }[entity];
   if (!config || !window.confirm(`Hapus ${config.label} ini? Tindakan ini tidak dapat dibatalkan.`)) return;
@@ -1139,8 +1143,10 @@ $('#content').addEventListener('click', async (event) => {
   const { action, entity, id } = button.dataset;
   if (action === 'new') return openEditor(entity);
   if (action === 'edit') {
-    const source = { request: state.requests, transaction: state.transactions, account: state.accounts }[entity];
-    return openEditor(entity, source.find((item) => item.id === id));
+    const source = { request: state.requests, account: state.accounts }[entity];
+    if (source) return openEditor(entity, source.find((item) => item.id === id));
+    if (entity === 'transaction') notify('Transaksi yang sudah dicatat tidak dapat diubah. Gunakan Batalkan untuk koreksi.', 'error');
+    return;
   }
   if (action === 'delete') return deleteRecord(entity, id);
   if (action === 'approve') return reviewRequest(id, 'approved');
