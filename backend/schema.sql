@@ -738,3 +738,60 @@ grant select on public.account_transaction_summary to authenticated;
 -- insert into public.users (id, full_name, role)
 -- values ('AUTH_USER_UUID', 'Nama Pengguna', 'ADMIN');
 -- Never expose a service_role key in frontend code.
+
+-- [FITUR BARU] Tahap 1: Manager hanya dapat mengubah batas saldo minimum akun.
+drop policy if exists accounts_update_manager_min_balance on public.petty_cash_accounts;
+create policy accounts_update_manager_min_balance
+  on public.petty_cash_accounts for update to authenticated
+  using (public.current_app_role() = 'MANAGER')
+  with check (public.current_app_role() = 'MANAGER');
+
+create or replace function public.protect_petty_cash_manager_account_update()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if public.current_app_role() = 'MANAGER' and (
+    new.id is distinct from old.id
+    or new.account_code is distinct from old.account_code
+    or new.name is distinct from old.name
+    or new.initial_balance is distinct from old.initial_balance
+    or new.is_active is distinct from old.is_active
+    or new.created_by is distinct from old.created_by
+    or new.created_at is distinct from old.created_at
+  ) then
+    raise exception 'Manager hanya dapat mengubah batas saldo minimum akun'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists petty_cash_accounts_protect_manager_update on public.petty_cash_accounts;
+create trigger petty_cash_accounts_protect_manager_update
+before update on public.petty_cash_accounts
+for each row execute function public.protect_petty_cash_manager_account_update();
+
+-- Verifikasi saldo setelah Tahap 1; hasil harus identik sebelum dan sesudah
+-- perubahan karena min_balance tidak masuk ke dalam perhitungan saldo.
+-- Jalankan di Supabase SQL Editor; query ini hanya membaca data.
+-- select
+--   a.id as account_id,
+--   a.name as nama_akun,
+--   coalesce(a.initial_balance, 0)
+--     + coalesce((
+--       select sum(r.requested_amount)
+--       from public.petty_cash_requests r
+--       where r.account_id = a.id and r.status = 'approved'
+--     ), 0)
+--     - coalesce((
+--       select sum(t.amount)
+--       from public.petty_cash_transactions t
+--       where t.account_id = a.id
+--         and t.transaction_type = 'OUT'
+--         and t.status = 'posted'
+--     ), 0) as saldo_kas
+-- from public.petty_cash_accounts a
+-- order by a.name;
