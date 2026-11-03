@@ -860,3 +860,8 @@ input[type="checkbox"], input[type="radio"] { width: auto; height: auto; min-hei
 @media (max-width: 600px) {
   .workspace .metric-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+.workspace .sidebar { margin-bottom: 0; }
+.workspace .topbar { display: none; }
+.workspace .main-area { min-height: calc(100vh - 88px); }
+.workspace .content { padding-top: 24px; }
