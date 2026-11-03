@@ -385,6 +385,10 @@ declare
   target_account_id uuid;
   current_balance numeric(14, 2);
 begin
+  if new.transaction_type is distinct from 'OUT' or new.status = 'void' then
+    return new;
+  end if;
+
   select id
   into target_account_id
   from public.petty_cash_accounts
@@ -478,6 +482,10 @@ declare
   target_account_id uuid;
   current_balance numeric(14, 2);
 begin
+  if new.transaction_type is distinct from 'OUT' or new.status = 'void' then
+    return new;
+  end if;
+
   select id
   into target_account_id
   from public.petty_cash_accounts
