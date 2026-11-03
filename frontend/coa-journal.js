@@ -28,7 +28,8 @@
         coaLoadStarted = true;
         refreshCoaData()
           .then(() => {
-            renderManagementPanel();
+            if (state.view === 'transactions' && isAdmin()) renderView();
+            else renderManagementPanel();
           })
           .catch((error) => {
             coaLoadFailed = true;
@@ -68,8 +69,7 @@
         : `${item ? 'Atur' : 'Tambah'} kategori`;
 
       if (type === 'coa') {
-        fields.innerHTML = `<label for="field-coa-code">Kode akun</label><input id="field-coa-code" name="code" type="text" maxlength="24" value="${escapeHtml(item?.code || '')}" required><label for="field-coa-name">Nama akun</label><input id="field-coa-name" name="name" type="text" maxlength="100" value="${escapeHtml(item?.name || '')}" required><label for="field-coa-type">Jenis akun</label><select id="field-coa-type" name="type" required>${[['ASSET', 'Aset'], ['LIABILITY', 'Liabilitas'], ['EQUITY', 'Ekuitas'], ['REVENUE', 'Pendapatan'], ['EXPENSE', 'Beban']].map(([value, label]) => `<option value="${value}" ${item?.type === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
-          fields.innerHTML = `<label for="field-coa-code">Kode akun</label><input id="field-coa-code" name="code" type="text" maxlength="24" value="${escapeHtml(item?.code || '')}" required><label for="field-coa-name">Nama akun</label><input id="field-coa-name" name="name" type="text" maxlength="100" value="${escapeHtml(item?.name || '')}" required><label for="field-coa-type">Jenis akun</label><select id="field-coa-type" name="type" required>${[['ASSET', 'Aset'], ['LIABILITY', 'Liabilitas'], ['EQUITY', 'Ekuitas'], ['REVENUE', 'Pendapatan'], ['EXPENSE', 'Beban']].map(([value, label]) => `<option value="${value}" ${(item?.type || 'EXPENSE') === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
+        fields.innerHTML = `<label for="field-coa-code">Kode akun</label><input id="field-coa-code" name="code" type="text" maxlength="24" value="${escapeHtml(item?.code || '')}" required><label for="field-coa-name">Nama akun</label><input id="field-coa-name" name="name" type="text" maxlength="100" value="${escapeHtml(item?.name || '')}" required><label for="field-coa-type">Jenis akun</label><select id="field-coa-type" name="type" required>${[['ASSET', 'Aset'], ['LIABILITY', 'Liabilitas'], ['EQUITY', 'Ekuitas'], ['REVENUE', 'Pendapatan'], ['EXPENSE', 'Beban']].map(([value, label]) => `<option value="${value}" ${(item?.type || 'EXPENSE') === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
       } else {
         const options = activeExpenseCoa().map((coa) => `<option value="${coa.id}" ${item?.coa_id === coa.id ? 'selected' : ''}>${escapeHtml(coa.code)} · ${escapeHtml(coa.name)}</option>`).join('');
         fields.innerHTML = `<label for="field-category-name">Nama kategori</label><input id="field-category-name" name="name" type="text" maxlength="80" value="${escapeHtml(item?.name || '')}" required><label for="field-category-coa">Akun beban (CoA)</label><select id="field-category-coa" name="coa_id" required><option value="">Pilih akun CoA</option>${options}</select>`;

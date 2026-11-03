@@ -726,15 +726,37 @@ function requestRows(list, compact = false) {
 function transactionRows(list, compact = false) {
   if (!list.length) return tableEmpty(compact ? 3 : 5, 'Belum ada transaksi', 'Transaksi kas kecil akan tampil di sini.');
   return list.map((item) => {
+    let journalLines = '';
+    if (!compact) {
+      try {
+        const chart = Array.isArray(state.chartOfAccounts) ? state.chartOfAccounts : [];
+        const category = (state.categories || []).find((entry) => entry.id === item.category_id);
+        const cashAccount = chart.find((entry) => entry.code === '1-1001');
+        const bankAccount = chart.find((entry) => entry.code === '1-1002');
+        const expenseAccount = chart.find((entry) => entry.id === item.coa_id)
+          || chart.find((entry) => entry.id === category?.coa_id);
+        const isCashIn = item.transaction_type === 'IN';
+        const debit = isCashIn
+          ? (cashAccount ? `${cashAccount.code} ${cashAccount.name}` : 'Kas Kecil')
+          : (expenseAccount ? `${expenseAccount.code} ${expenseAccount.name}` : 'Beban');
+        const credit = isCashIn
+          ? (bankAccount ? `${bankAccount.code} ${bankAccount.name}` : 'Kas Bank')
+          : (cashAccount ? `${cashAccount.code} ${cashAccount.name}` : 'Kas Kecil');
+        journalLines = `<span class="cell-sub journal-entry-lines"><span>(D) ${escapeHtml(debit)}</span><br><span>(K) ${escapeHtml(credit)}</span></span>`;
+      } catch {
+        journalLines = '<span class="cell-sub journal-entry-lines"><span>(D) Beban</span><br><span>(K) Kas Kecil</span></span>';
+      }
+    }
     const isVoided = item.status === 'void';
     const voidBadge = isVoided ? '<span class="badge badge-void">Dibatalkan</span>' : '';
+    const transactionTypeLabel = item.transaction_type === 'IN' ? 'Kas masuk' : 'Kas keluar';
     const rowClass = isVoided ? 'voided' : '';
     const actions = isAdmin()
       ? isVoided
         ? `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button>`
         : `<button class="small-action" data-action="edit" data-entity="transaction" data-id="${item.id}">Ubah</button><button class="small-action danger" data-action="void" data-entity="transaction" data-id="${item.id}">Batalkan</button>`
       : '—';
-    return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span></td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge badge-pending">Kas keluar</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
+    return `<tr class="${rowClass}"><td><strong>${escapeHtml(item.description)}</strong><span class="cell-sub">${dateLabel(item.transaction_date)}</span>${journalLines}</td>${compact ? '' : `<td>${escapeHtml(accountName(item.account_id))}</td>`}<td><span class="badge ${item.transaction_type === 'IN' ? 'badge-approved' : 'badge-pending'}">${transactionTypeLabel}</span>${voidBadge}</td>${compact ? '' : `<td><span class="cell-sub">${escapeHtml(categoryName(item.category_id))}</span></td>`}<td class="amount">${money(item.amount)}</td>${compact ? '' : `<td><div class="row-actions">${actions}</div></td>`}</tr>`;
   }).join('');
 }
 
