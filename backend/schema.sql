@@ -982,7 +982,8 @@ begin
   join public.chart_of_accounts as coa on coa.id = category.coa_id
   where category.id = new.category_id
     and category.is_active
-    and coa.is_active;
+    and coa.is_active
+    and coa.type = 'EXPENSE';
 
   if new.coa_id is null then
     raise exception 'Kategori tidak aktif atau akun CoA belum dipetakan atau tidak aktif';
@@ -1079,7 +1080,11 @@ begin
   select id into expense_coa from public.chart_of_accounts where code = '5-1003';
   old_expense_coa := coalesce(old.coa_id, old_expense_coa, expense_coa);
   expense_coa := coalesce(new.coa_id, expense_coa);
-  event_sequence := floor(extract(epoch from coalesce(new.updated_at, now())) * 1000000)::bigint;
+  select coalesce(max(journal.source_sequence), 0) + 1
+  into event_sequence
+  from public.journal_entries as journal
+  where journal.source_id = new.id
+    and journal.source_type like 'PETTY_CASH_%';
 
   if old.status = 'posted' and new.status = 'void' then
     perform public.append_cash_journal(

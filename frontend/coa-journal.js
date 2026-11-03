@@ -10,6 +10,7 @@
     let coaLoadFailed = false;
 
     const activeCoa = () => state.chartOfAccounts.filter((item) => item.is_active);
+    const activeExpenseCoa = () => activeCoa().filter((item) => item.type === 'EXPENSE');
     const accountForCategory = (category) => state.chartOfAccounts.find((item) => item.id === category.coa_id);
     async function refreshCoaData() {
       const { data, error } = await supabaseClient.from('chart_of_accounts').select('*').order('code');
@@ -55,8 +56,8 @@
 
     function openEditor(type, item = null) {
       if (!isAdmin()) return;
-      if (type === 'category' && !activeCoa().length) {
-        notify('Tambahkan akun CoA aktif sebelum mengatur kategori.', 'error');
+      if (type === 'category' && !activeExpenseCoa().length) {
+        notify('Tambahkan akun CoA beban aktif sebelum mengatur kategori.', 'error');
         return;
       }
 
@@ -70,7 +71,7 @@
         fields.innerHTML = `<label for="field-coa-code">Kode akun</label><input id="field-coa-code" name="code" type="text" maxlength="24" value="${escapeHtml(item?.code || '')}" required><label for="field-coa-name">Nama akun</label><input id="field-coa-name" name="name" type="text" maxlength="100" value="${escapeHtml(item?.name || '')}" required><label for="field-coa-type">Jenis akun</label><select id="field-coa-type" name="type" required>${[['ASSET', 'Aset'], ['LIABILITY', 'Liabilitas'], ['EQUITY', 'Ekuitas'], ['REVENUE', 'Pendapatan'], ['EXPENSE', 'Beban']].map(([value, label]) => `<option value="${value}" ${item?.type === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
           fields.innerHTML = `<label for="field-coa-code">Kode akun</label><input id="field-coa-code" name="code" type="text" maxlength="24" value="${escapeHtml(item?.code || '')}" required><label for="field-coa-name">Nama akun</label><input id="field-coa-name" name="name" type="text" maxlength="100" value="${escapeHtml(item?.name || '')}" required><label for="field-coa-type">Jenis akun</label><select id="field-coa-type" name="type" required>${[['ASSET', 'Aset'], ['LIABILITY', 'Liabilitas'], ['EQUITY', 'Ekuitas'], ['REVENUE', 'Pendapatan'], ['EXPENSE', 'Beban']].map(([value, label]) => `<option value="${value}" ${(item?.type || 'EXPENSE') === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
       } else {
-        const options = activeCoa().map((coa) => `<option value="${coa.id}" ${item?.coa_id === coa.id ? 'selected' : ''}>${escapeHtml(coa.code)} · ${escapeHtml(coa.name)}</option>`).join('');
+        const options = activeExpenseCoa().map((coa) => `<option value="${coa.id}" ${item?.coa_id === coa.id ? 'selected' : ''}>${escapeHtml(coa.code)} · ${escapeHtml(coa.name)}</option>`).join('');
         fields.innerHTML = `<label for="field-category-name">Nama kategori</label><input id="field-category-name" name="name" type="text" maxlength="80" value="${escapeHtml(item?.name || '')}" required><label for="field-category-coa">Akun beban (CoA)</label><select id="field-category-coa" name="coa_id" required><option value="">Pilih akun CoA</option>${options}</select>`;
       }
 
@@ -94,7 +95,7 @@
             ? await supabaseClient.from('chart_of_accounts').update(payload).eq('id', editor.id)
             : await supabaseClient.from('chart_of_accounts').insert(payload);
         } else {
-          const coa = activeCoa().find((item) => item.id === values.coa_id);
+          const coa = activeExpenseCoa().find((item) => item.id === values.coa_id);
           if (!coa) throw new Error('Pilih akun CoA yang masih aktif.');
           const payload = { name: values.name.trim(), coa_id: coa.id, coa_code: coa.code };
           result = editor.id
@@ -154,8 +155,8 @@
       if (!button || !isAdmin() || !coaLoadStarted || coaLoadFailed) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (!activeCoa().length) {
-        notify('Tambahkan akun CoA aktif sebelum membuat kategori.', 'error');
+      if (!activeExpenseCoa().length) {
+        notify('Tambahkan akun CoA beban aktif sebelum membuat kategori.', 'error');
         return;
       }
       openEditor('category');
